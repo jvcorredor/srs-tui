@@ -1,3 +1,4 @@
+// Package config_test contains unit tests for the config loader.
 package config_test
 
 import (
