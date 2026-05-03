@@ -1,3 +1,8 @@
+// Package tui_test contains integration tests for the review TUI.
+//
+// Tests exercise the ReviewModel through its public Update and View methods
+// rather than internal state, matching the project’s behavior-first testing
+// philosophy.
 package tui_test
 
 import (
@@ -11,10 +16,14 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/tui"
 )
 
+// asReview asserts that a tea.Model is a tui.ReviewModel and returns it.
+// It is used by tests that need ReviewModel-specific getters after an Update.
 func asReview(m tea.Model) tui.ReviewModel {
 	return m.(tui.ReviewModel)
 }
 
+// TestReviewFlipOnSpace verifies that pressing Space reveals the back of the
+// current card.
 func TestReviewFlipOnSpace(t *testing.T) {
 	cards := []*card.Card{
 		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q", Back: "A"},
@@ -29,6 +38,7 @@ func TestReviewFlipOnSpace(t *testing.T) {
 	}
 }
 
+// TestReviewFlipOnEnter verifies that pressing Enter also reveals the back.
 func TestReviewFlipOnEnter(t *testing.T) {
 	cards := []*card.Card{
 		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q", Back: "A"},
@@ -40,6 +50,7 @@ func TestReviewFlipOnEnter(t *testing.T) {
 	}
 }
 
+// TestReviewQuitOnQ verifies that pressing 'q' returns a tea.Quit command.
 func TestReviewQuitOnQ(t *testing.T) {
 	cards := []*card.Card{
 		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q", Back: "A"},
@@ -51,6 +62,8 @@ func TestReviewQuitOnQ(t *testing.T) {
 	}
 }
 
+// fakeRateFunc is a stub RateFunc that returns fixed interval previews for
+// every rating, making tests deterministic and fast.
 func fakeRateFunc(c *card.Card, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
 	next := fsrs.CardState{State: fsrs.StateLearning, Stability: 1.5}
 	previews := []fsrs.IntervalPreview{
@@ -62,6 +75,8 @@ func fakeRateFunc(c *card.Card, rating int, now time.Time) (fsrs.CardState, []fs
 	return next, previews, nil
 }
 
+// TestRatingKeyAdvancesCard checks that rating a flipped card moves the
+// session to the next card and resets the view to the front side.
 func TestRatingKeyAdvancesCard(t *testing.T) {
 	cards := []*card.Card{
 		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q1", Back: "A1"},
@@ -81,6 +96,8 @@ func TestRatingKeyAdvancesCard(t *testing.T) {
 	}
 }
 
+// TestRatingKeyShowsIntervalPreviewsOnBack confirms that the rendered view
+// includes preview labels (Again, Hard, etc.) once the card is flipped.
 func TestRatingKeyShowsIntervalPreviewsOnBack(t *testing.T) {
 	cards := []*card.Card{
 		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q", Back: "A"},
@@ -95,6 +112,8 @@ func TestRatingKeyShowsIntervalPreviewsOnBack(t *testing.T) {
 	}
 }
 
+// TestAllFourRatingKeysAccepted validates that every rating key (1–4) can be
+// used to advance through a multi-card session without error.
 func TestAllFourRatingKeysAccepted(t *testing.T) {
 	cards := []*card.Card{
 		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q1", Back: "A1"},
