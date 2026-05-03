@@ -27,3 +27,6 @@ ci: fmt-check lint vet test
 
 clean:
     rm -rf ./bin
+
+release-snapshot:
+    goreleaser release --snapshot --clean
