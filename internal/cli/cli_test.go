@@ -740,3 +740,168 @@ func TestInitSubcommandCreatesFiles(t *testing.T) {
 		t.Error("decks_root directory not created")
 	}
 }
+
+func TestDecksCommandPrintsOneNamePerLine(t *testing.T) {
+	tmpDir := t.TempDir()
+	for _, name := range []string{"french", "golang"} {
+		if err := os.MkdirAll(filepath.Join(tmpDir, name), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", name, err)
+		}
+	}
+
+	var stdout bytes.Buffer
+	cli.SetOutput(io.Discard)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"decks", "--decks-root", tmpDir})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("decks command failed: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimRight(stdout.String(), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("lines = %d, want 2; output=%q", len(lines), stdout.String())
+	}
+	if lines[0] != "french" {
+		t.Errorf("lines[0] = %q, want %q", lines[0], "french")
+	}
+	if lines[1] != "golang" {
+		t.Errorf("lines[1] = %q, want %q", lines[1], "golang")
+	}
+}
+
+func TestDecksCommandSortsAlphabetically(t *testing.T) {
+	tmpDir := t.TempDir()
+	for _, name := range []string{"zoo", "alpha", "med"} {
+		if err := os.MkdirAll(filepath.Join(tmpDir, name), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", name, err)
+		}
+	}
+
+	var stdout bytes.Buffer
+	cli.SetOutput(io.Discard)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"decks", "--decks-root", tmpDir})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("decks command failed: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimRight(stdout.String(), "\n"), "\n")
+	want := []string{"alpha", "med", "zoo"}
+	if len(lines) != len(want) {
+		t.Fatalf("lines = %v, want %v", lines, want)
+	}
+	for i, got := range lines {
+		if got != want[i] {
+			t.Errorf("lines[%d] = %q, want %q", i, got, want[i])
+		}
+	}
+}
+
+func TestDecksCommandUnreadableRootWritesStderrAndExits1(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cli.SetOutput(io.Discard)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"decks", "--decks-root", "/nonexistent/path/xyz"})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for nonexistent decks_root")
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout should be empty on error, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "decks:") {
+		t.Errorf("stderr should mention 'decks:', got %q", stderr.String())
+	}
+
+	code := cli.ExecuteWithArgs([]string{"decks", "--decks-root", "/nonexistent/path/xyz"})
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1", code)
+	}
+}
+
+func TestDecksCommandNoHeaderNoTrailer(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, "french"), 0o755); err != nil {
+		t.Fatalf("mkdir french: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	cli.SetOutput(io.Discard)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"decks", "--decks-root", tmpDir})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("decks command failed: %v", err)
+	}
+
+	out := stdout.String()
+	if strings.HasPrefix(out, " ") || strings.HasPrefix(out, "\t") {
+		t.Errorf("output should not have leading whitespace: %q", out)
+	}
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if lines[0] != "french" {
+		t.Errorf("first line = %q, want %q (no header)", lines[0], "french")
+	}
+}
+
+func TestDecksCommandIgnoresFilesInRoot(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, "french"), 0o755); err != nil {
+		t.Fatalf("mkdir french: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "notes.txt"), []byte("not a deck"), 0o644); err != nil {
+		t.Fatalf("write notes.txt: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	cli.SetOutput(io.Discard)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"decks", "--decks-root", tmpDir})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("decks command failed: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimRight(stdout.String(), "\n"), "\n")
+	if len(lines) != 1 || lines[0] != "french" {
+		t.Errorf("output = %v, want only [french] (files ignored)", lines)
+	}
+}
+
+func TestDecksCommandEmptyRootPrintsNothing(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	var stdout bytes.Buffer
+	cli.SetOutput(io.Discard)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"decks", "--decks-root", tmpDir})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("decks command failed: %v", err)
+	}
+
+	if stdout.String() != "" {
+		t.Errorf("output should be empty for empty root, got %q", stdout.String())
+	}
+}
