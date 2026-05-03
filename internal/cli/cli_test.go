@@ -17,6 +17,8 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/store"
 )
 
+// TestVersionCommandPrintsVersion checks that the version subcommand prints the
+// version string, commit hash, and build date set by SetVersion.
 func TestVersionCommandPrintsVersion(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cli.SetOutput(buf)
@@ -42,6 +44,8 @@ func TestVersionCommandPrintsVersion(t *testing.T) {
 	}
 }
 
+// TestExecuteReturnsZero verifies that Execute returns 0 when no subcommand
+// is given (the root command prints help and exits successfully).
 func TestExecuteReturnsZero(t *testing.T) {
 	cli.SetOutput(io.Discard)
 	code := cli.Execute()
@@ -50,6 +54,8 @@ func TestExecuteReturnsZero(t *testing.T) {
 	}
 }
 
+// TestReviewCommandRequiresDeckArg checks that review fails when the deck
+// argument is missing.
 func TestReviewCommandRequiresDeckArg(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cli.SetOutput(buf)
@@ -63,6 +69,8 @@ func TestReviewCommandRequiresDeckArg(t *testing.T) {
 	}
 }
 
+// TestReviewCommandAcceptsDeckArg verifies that review succeeds when a deck
+// argument is provided.
 func TestReviewCommandAcceptsDeckArg(t *testing.T) {
 	cli.SetOutput(io.Discard)
 	cmd := cli.NewRootCmd()
@@ -76,6 +84,9 @@ func TestReviewCommandAcceptsDeckArg(t *testing.T) {
 	}
 }
 
+// TestMakeRateFuncPersistsRating verifies that MakeRateFunc updates the card's
+// FSRS state, writes the new state back to the card file, and appends a log entry
+// to the store's JSONL file.
 func TestMakeRateFuncPersistsRating(t *testing.T) {
 	cardDir := t.TempDir()
 	stateDir := t.TempDir()
@@ -148,6 +159,8 @@ func TestMakeRateFuncPersistsRating(t *testing.T) {
 	}
 }
 
+// TestNewCommandCreatesCardFileWithPrefilledFrontmatter verifies that the new
+// command creates a Markdown card file with the correct frontmatter fields.
 func TestNewCommandCreatesCardFileWithPrefilledFrontmatter(t *testing.T) {
 	tmpDir := t.TempDir()
 	cli.SetOutput(io.Discard)
@@ -183,6 +196,8 @@ func TestNewCommandCreatesCardFileWithPrefilledFrontmatter(t *testing.T) {
 	}
 }
 
+// TestNewCommandWithClozeFlagCreatesClozeCard checks that the --cloze flag
+// produces a card with type "cloze" and a cloze-deletion syntax hint.
 func TestNewCommandWithClozeFlagCreatesClozeCard(t *testing.T) {
 	tmpDir := t.TempDir()
 	cli.SetOutput(io.Discard)
@@ -214,6 +229,8 @@ func TestNewCommandWithClozeFlagCreatesClozeCard(t *testing.T) {
 	}
 }
 
+// TestNewCommandRefusesOverwrite verifies that the new command fails when the
+// target card file already exists.
 func TestNewCommandRefusesOverwrite(t *testing.T) {
 	tmpDir := t.TempDir()
 	cli.SetOutput(io.Discard)
@@ -238,6 +255,8 @@ func TestNewCommandRefusesOverwrite(t *testing.T) {
 	}
 }
 
+// TestNewCommandLaunchesEditor checks that the new command invokes the editor
+// runner with the path of the newly created card file.
 func TestNewCommandLaunchesEditor(t *testing.T) {
 	tmpDir := t.TempDir()
 	var editorCalledWith string
@@ -261,6 +280,8 @@ func TestNewCommandLaunchesEditor(t *testing.T) {
 	}
 }
 
+// TestNewCommandCreatesDeckDirectoryIfMissing verifies that the new command
+// creates the deck directory when it does not already exist.
 func TestNewCommandCreatesDeckDirectoryIfMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 	cli.SetOutput(io.Discard)
@@ -289,6 +310,8 @@ func TestNewCommandCreatesDeckDirectoryIfMissing(t *testing.T) {
 	}
 }
 
+// TestNewCommandAtomicWriteNoTmpArtifacts checks that the new command does not
+// leave temporary files in the deck directory after creating a card.
 func TestNewCommandAtomicWriteNoTmpArtifacts(t *testing.T) {
 	tmpDir := t.TempDir()
 	cli.SetOutput(io.Discard)
@@ -314,6 +337,8 @@ func TestNewCommandAtomicWriteNoTmpArtifacts(t *testing.T) {
 	}
 }
 
+// TestNewCommandUsageErrorReturnsExitCode2 verifies that ExecuteWithArgs returns
+// exit code 2 when the new command is called with missing arguments.
 func TestNewCommandUsageErrorReturnsExitCode2(t *testing.T) {
 	cli.SetOutput(io.Discard)
 	code := cli.ExecuteWithArgs([]string{"new"})
@@ -322,6 +347,8 @@ func TestNewCommandUsageErrorReturnsExitCode2(t *testing.T) {
 	}
 }
 
+// TestNewCommandRuntimeErrorReturnsExitCode1 verifies that ExecuteWithArgs returns
+// exit code 1 when the new command encounters a runtime error (file exists).
 func TestNewCommandRuntimeErrorReturnsExitCode1(t *testing.T) {
 	tmpDir := t.TempDir()
 	cli.SetOutput(io.Discard)
@@ -340,6 +367,8 @@ func TestNewCommandRuntimeErrorReturnsExitCode1(t *testing.T) {
 	}
 }
 
+// TestMakeRateFuncAssignsID checks that MakeRateFunc generates a card ID when
+// the card does not already have one.
 func TestMakeRateFuncAssignsID(t *testing.T) {
 	cardDir := t.TempDir()
 	stateDir := t.TempDir()
@@ -367,6 +396,8 @@ func TestMakeRateFuncAssignsID(t *testing.T) {
 	}
 }
 
+// TestRunInitWritesDefaultConfig verifies that RunInit writes a config.toml
+// containing the expected default settings.
 func TestRunInitWritesDefaultConfig(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
@@ -398,6 +429,8 @@ func TestRunInitWritesDefaultConfig(t *testing.T) {
 	}
 }
 
+// TestRunInitCreatesDecksRoot checks that RunInit creates the decks root
+// directory.
 func TestRunInitCreatesDecksRoot(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
@@ -418,6 +451,8 @@ func TestRunInitCreatesDecksRoot(t *testing.T) {
 	}
 }
 
+// TestRunInitRefusesOverwriteWithoutForce verifies that RunInit fails when
+// config.toml already exists and force is false.
 func TestRunInitRefusesOverwriteWithoutForce(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
@@ -438,6 +473,8 @@ func TestRunInitRefusesOverwriteWithoutForce(t *testing.T) {
 	}
 }
 
+// TestRunInitOverwritesWithForce checks that RunInit overwrites an existing
+// config.toml when force is true.
 func TestRunInitOverwritesWithForce(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
@@ -463,6 +500,8 @@ func TestRunInitOverwritesWithForce(t *testing.T) {
 	}
 }
 
+// TestRunInitPrintsSuccessSummary verifies that RunInit prints the paths of
+// the created config file and decks directory to stdout.
 func TestRunInitPrintsSuccessSummary(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
@@ -486,6 +525,8 @@ func TestRunInitPrintsSuccessSummary(t *testing.T) {
 	}
 }
 
+// TestRunInitIdempotentWithForce checks that running RunInit twice with force
+// produces the same config content both times.
 func TestRunInitIdempotentWithForce(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
@@ -509,6 +550,8 @@ func TestRunInitIdempotentWithForce(t *testing.T) {
 	}
 }
 
+// TestInitSubcommandCreatesFiles verifies that the init subcommand creates
+// config.toml and the decks root directory using the standard XDG paths.
 func TestInitSubcommandCreatesFiles(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
