@@ -184,7 +184,9 @@ func TestQueueSkipsNonCardFiles(t *testing.T) {
 func TestQueueEnumeratesClozeGroups(t *testing.T) {
 	root := t.TempDir()
 	deckDir := filepath.Join(root, "mydeck")
-	os.MkdirAll(deckDir, 0o755)
+	if err := os.MkdirAll(deckDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
 
 	writeBasicCard(t, deckDir, "basic-1", "Q1", "A1")
 	writeClozeCard(t, deckDir, "cloze-1", "{{c1::A}} and {{c2::B}}", nil)
