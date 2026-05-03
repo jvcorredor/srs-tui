@@ -148,6 +148,198 @@ func TestMakeRateFuncPersistsRating(t *testing.T) {
 	}
 }
 
+func TestNewCommandCreatesCardFileWithPrefilledFrontmatter(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+	cli.SetEditorRun(func(_ string) error { return nil })
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"new", "french", "bonjour", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("new command failed: %v", err)
+	}
+
+	cardPath := filepath.Join(tmpDir, "french", "bonjour.md")
+	c, err := card.ParseFile(cardPath)
+	if err != nil {
+		t.Fatalf("parse created card: %v", err)
+	}
+	if c.Schema != 1 {
+		t.Errorf("schema = %d, want 1", c.Schema)
+	}
+	if c.ID == "" {
+		t.Error("id should not be empty")
+	}
+	if c.Type != card.Basic {
+		t.Errorf("type = %q, want %q", c.Type, card.Basic)
+	}
+	if c.Created == "" {
+		t.Error("created should not be empty")
+	}
+	if len(c.Tags) != 0 {
+		t.Errorf("tags = %v, want empty", c.Tags)
+	}
+}
+
+func TestNewCommandWithClozeFlagCreatesClozeCard(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+	cli.SetEditorRun(func(_ string) error { return nil })
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"new", "med", "tibia", "--cloze", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("new command failed: %v", err)
+	}
+
+	cardPath := filepath.Join(tmpDir, "med", "tibia.md")
+	c, err := card.ParseFile(cardPath)
+	if err != nil {
+		t.Fatalf("parse created card: %v", err)
+	}
+	if c.Type != card.Cloze {
+		t.Errorf("type = %q, want %q", c.Type, card.Cloze)
+	}
+
+	raw, err := os.ReadFile(cardPath)
+	if err != nil {
+		t.Fatalf("read card file: %v", err)
+	}
+	if !strings.Contains(string(raw), "{{c1::") {
+		t.Error("cloze card body should contain cloze syntax hint")
+	}
+}
+
+func TestNewCommandRefusesOverwrite(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+	cli.SetEditorRun(func(_ string) error { return nil })
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"new", "french", "bonjour", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("first new command failed: %v", err)
+	}
+
+	cmd2 := cli.NewRootCmd()
+	cmd2.SetArgs([]string{"new", "french", "bonjour", "--decks-root", tmpDir})
+	cmd2.SetOut(io.Discard)
+	err := cmd2.Execute()
+	if err == nil {
+		t.Fatal("expected error when file already exists")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("error should mention 'already exists', got: %v", err)
+	}
+}
+
+func TestNewCommandLaunchesEditor(t *testing.T) {
+	tmpDir := t.TempDir()
+	var editorCalledWith string
+	cli.SetOutput(io.Discard)
+	cli.SetEditorRun(func(file string) error {
+		editorCalledWith = file
+		return nil
+	})
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"new", "french", "bonjour", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("new command failed: %v", err)
+	}
+
+	cardPath := filepath.Join(tmpDir, "french", "bonjour.md")
+	if editorCalledWith != cardPath {
+		t.Errorf("editor called with %q, want %q", editorCalledWith, cardPath)
+	}
+}
+
+func TestNewCommandCreatesDeckDirectoryIfMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+	cli.SetEditorRun(func(_ string) error { return nil })
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"new", "brand-new-deck", "card1", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("new command failed: %v", err)
+	}
+
+	deckDir := filepath.Join(tmpDir, "brand-new-deck")
+	info, err := os.Stat(deckDir)
+	if err != nil {
+		t.Fatalf("deck directory not created: %v", err)
+	}
+	if !info.IsDir() {
+		t.Error("deck path is not a directory")
+	}
+
+	cardPath := filepath.Join(deckDir, "card1.md")
+	if _, err := os.Stat(cardPath); err != nil {
+		t.Fatalf("card file not created: %v", err)
+	}
+}
+
+func TestNewCommandAtomicWriteNoTmpArtifacts(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+	cli.SetEditorRun(func(_ string) error { return nil })
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"new", "french", "bonjour", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("new command failed: %v", err)
+	}
+
+	deckDir := filepath.Join(tmpDir, "french")
+	entries, err := os.ReadDir(deckDir)
+	if err != nil {
+		t.Fatalf("read deck dir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tmp") {
+			t.Errorf("temp artifact left behind: %s", e.Name())
+		}
+	}
+}
+
+func TestNewCommandUsageErrorReturnsExitCode2(t *testing.T) {
+	cli.SetOutput(io.Discard)
+	code := cli.ExecuteWithArgs([]string{"new"})
+	if code != 2 {
+		t.Errorf("exit code = %d, want 2 for usage error", code)
+	}
+}
+
+func TestNewCommandRuntimeErrorReturnsExitCode1(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+	cli.SetEditorRun(func(_ string) error { return nil })
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"new", "french", "bonjour", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("first new command failed: %v", err)
+	}
+
+	code := cli.ExecuteWithArgs([]string{"new", "french", "bonjour", "--decks-root", tmpDir})
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 for runtime error (file exists)", code)
+	}
+}
+
 func TestMakeRateFuncAssignsID(t *testing.T) {
 	cardDir := t.TempDir()
 	stateDir := t.TempDir()

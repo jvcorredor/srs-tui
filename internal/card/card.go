@@ -6,7 +6,9 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -40,6 +42,19 @@ type Card struct {
 
 var frontHeading = regexp.MustCompile(`(?m)^## Front\s*$`)
 var backHeading = regexp.MustCompile(`(?m)^## Back\s*$`)
+
+func NewCard(cardType Type, now time.Time) *Card {
+	id, _ := uuid.NewV7()
+	return &Card{
+		Meta: Meta{
+			Schema:  1,
+			ID:      id.String(),
+			Type:    cardType,
+			Created: now.Format(time.RFC3339),
+			Tags:    []string{},
+		},
+	}
+}
 
 func ParseFile(path string) (*Card, error) {
 	data, err := os.ReadFile(path)
@@ -90,6 +105,20 @@ func (c *Card) Serialize() []byte {
 	b.WriteString(c.Back)
 	if !strings.HasSuffix(c.Back, "\n") {
 		b.WriteByte('\n')
+	}
+	return []byte(b.String())
+}
+
+func (c *Card) SerializeNew() []byte {
+	fmData, _ := yaml.Marshal(&c.Meta)
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.Write(fmData)
+	b.WriteString("---\n\n")
+	if c.Type == Cloze {
+		b.WriteString("{{c1::answer}}\n")
+	} else {
+		b.WriteString("## Front\n\n\n\n## Back\n")
 	}
 	return []byte(b.String())
 }
