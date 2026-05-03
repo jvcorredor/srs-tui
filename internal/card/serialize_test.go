@@ -55,12 +55,12 @@ func TestClozeSerializeOmitsFlatFields(t *testing.T) {
 func TestBasicSerializeIncludesFlatFields(t *testing.T) {
 	c := &card.Card{
 		Meta: card.Meta{
-			Schema:  1,
-			ID:      "test-id",
-			Type:    card.Basic,
-			Created: "2026-01-01T00:00:00Z",
-			State:   "review",
-			Due:     "2026-02-01T00:00:00Z",
+			Schema:    1,
+			ID:        "test-id",
+			Type:      card.Basic,
+			Created:   "2026-01-01T00:00:00Z",
+			State:     "review",
+			Due:       "2026-02-01T00:00:00Z",
 			Stability: 5.0,
 		},
 		Front: "Q\n",

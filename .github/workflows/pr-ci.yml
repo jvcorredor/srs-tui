@@ -1,0 +1,29 @@
+name: PR CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - uses: extractions/setup-just@v2
+
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.1
+
+      - name: Run just ci
+        run: just ci
+
+      - name: Run goreleaser check
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          args: check
