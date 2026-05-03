@@ -14,6 +14,7 @@ import (
 
 	"github.com/jvcorredor/srs-tui/internal/card"
 	"github.com/jvcorredor/srs-tui/internal/cli"
+	"github.com/jvcorredor/srs-tui/internal/deck"
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
 	"github.com/jvcorredor/srs-tui/internal/store"
 	"github.com/jvcorredor/srs-tui/internal/version"
@@ -159,7 +160,7 @@ func TestMakeRateFuncPersistsRating(t *testing.T) {
 	rateFunc := cli.MakeRateFunc(s)
 
 	now := time.Now()
-	nextState, previews, err := rateFunc(c, 3, now)
+	nextState, previews, err := rateFunc(&deck.ReviewItem{Card: c}, 3, now)
 	if err != nil {
 		t.Fatalf("rateFunc() error: %v", err)
 	}
@@ -208,6 +209,85 @@ func TestMakeRateFuncPersistsRating(t *testing.T) {
 	}
 	if parsed.Stability <= 0 {
 		t.Error("card stability should be positive after rating")
+	}
+}
+
+// TestMakeRateFuncUpdatesOnlyActiveClozeGroup verifies that rating a cloze card
+// updates only the active group's FSRS state, leaves other groups untouched,
+// writes a JSONL log entry with the cloze_group field, and persists the card
+// with per-group frontmatter.
+func TestMakeRateFuncUpdatesOnlyActiveClozeGroup(t *testing.T) {
+	cardDir := t.TempDir()
+	stateDir := t.TempDir()
+
+	c := &card.Card{
+		Meta: card.Meta{
+			Schema: 1,
+			ID:     "cloze-1",
+			Type:   card.Cloze,
+			Clozes: map[string]card.ClozeGroup{
+				"c1": {State: "new"},
+				"c2": {State: "new"},
+			},
+		},
+		Body:     "{{c1::A}} and {{c2::B}}\n",
+		FilePath: filepath.Join(cardDir, "cloze-1.md"),
+	}
+	os.WriteFile(c.FilePath, c.Serialize(), 0o644)
+
+	s := store.NewStore(stateDir, "testdeck")
+	rateFunc := cli.MakeRateFunc(s)
+
+	now := time.Now()
+	item := &deck.ReviewItem{Card: c, ClozeGroup: "c1"}
+	nextState, _, err := rateFunc(item, 3, now)
+	if err != nil {
+		t.Fatalf("rateFunc() error: %v", err)
+	}
+
+	// c1 should be updated, c2 should remain "new"
+	if c.Clozes["c1"].State == "" || c.Clozes["c1"].State == "new" {
+		t.Errorf("c1 state should be updated, got %q", c.Clozes["c1"].State)
+	}
+	if c.Clozes["c2"].State != "new" {
+		t.Errorf("c2 state should remain 'new', got %q", c.Clozes["c2"].State)
+	}
+	if c.Clozes["c2"].Stability != 0 {
+		t.Errorf("c2 stability should remain 0, got %v", c.Clozes["c2"].Stability)
+	}
+
+	// Log should contain cloze_group "c1"
+	logPath := filepath.Join(stateDir, "testdeck.jsonl")
+	f, err := os.Open(logPath)
+	if err != nil {
+		t.Fatalf("open jsonl: %v", err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var entry store.LogEntry
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if entry.ClozeGroup == nil || *entry.ClozeGroup != "c1" {
+			t.Errorf("cloze_group = %v, want %q", entry.ClozeGroup, "c1")
+		}
+		if entry.Next.State != nextState.State {
+			t.Errorf("next.state = %q, want %q", entry.Next.State, nextState.State)
+		}
+	}
+
+	// Card file should persist the per-group frontmatter
+	parsed, err := card.ParseFile(c.FilePath)
+	if err != nil {
+		t.Fatalf("ParseFile after rate: %v", err)
+	}
+	if parsed.Clozes["c1"].State != c.Clozes["c1"].State {
+		t.Errorf("roundtrip c1 state = %q, want %q", parsed.Clozes["c1"].State, c.Clozes["c1"].State)
+	}
+	if parsed.Clozes["c2"].State != "new" {
+		t.Errorf("roundtrip c2 state = %q, want %q", parsed.Clozes["c2"].State, "new")
 	}
 }
 
@@ -439,7 +519,7 @@ func TestMakeRateFuncAssignsID(t *testing.T) {
 	s := store.NewStore(stateDir, "testdeck")
 	rateFunc := cli.MakeRateFunc(s)
 
-	_, _, err := rateFunc(c, 3, time.Now())
+	_, _, err := rateFunc(&deck.ReviewItem{Card: c}, 3, time.Now())
 	if err != nil {
 		t.Fatalf("rateFunc() error: %v", err)
 	}
