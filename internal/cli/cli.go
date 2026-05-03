@@ -233,7 +233,7 @@ func newVersionCmd() *cobra.Command {
 			info := version.Get()
 			switch format {
 			case "text":
-				fmt.Fprintf(cmd.OutOrStdout(), "srs %s\ncommit: %s\ndate:   %s\n", info.Version, info.Commit, info.Date)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "srs %s\ncommit: %s\ndate:   %s\n", info.Version, info.Commit, info.Date)
 			case "json":
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				return enc.Encode(info)
@@ -275,7 +275,7 @@ func RunInit(configDir, dataDir string, force bool, stdout, stderr io.Writer) er
 	configPath := filepath.Join(srsConfigDir, "config.toml")
 
 	if _, err := os.Stat(configPath); err == nil && !force {
-		fmt.Fprintf(stderr, "config.toml already exists; use --force to overwrite\n")
+		_, _ = fmt.Fprintf(stderr, "config.toml already exists; use --force to overwrite\n")
 		return fmt.Errorf("config.toml already exists")
 	}
 
@@ -292,7 +292,7 @@ func RunInit(configDir, dataDir string, force bool, stdout, stderr io.Writer) er
 		return fmt.Errorf("create decks root: %w", err)
 	}
 
-	fmt.Fprintf(stdout, "Created %s\nCreated %s\n", configPath, decksRoot)
+	_, _ = fmt.Fprintf(stdout, "Created %s\nCreated %s\n", configPath, decksRoot)
 	return nil
 }
 

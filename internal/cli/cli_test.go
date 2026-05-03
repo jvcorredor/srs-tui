@@ -153,7 +153,9 @@ func TestMakeRateFuncPersistsRating(t *testing.T) {
 		Back:     "A\n",
 		FilePath: filepath.Join(cardDir, "card-1.md"),
 	}
-	os.WriteFile(c.FilePath, c.Serialize(), 0o644)
+	if err := os.WriteFile(c.FilePath, c.Serialize(), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
 
 	s := store.NewStore(stateDir, "testdeck")
 	rateFunc := cli.MakeRateFunc(s)
@@ -175,7 +177,7 @@ func TestMakeRateFuncPersistsRating(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open jsonl: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	lineCount := 0
@@ -434,7 +436,9 @@ func TestMakeRateFuncAssignsID(t *testing.T) {
 		Back:     "A\n",
 		FilePath: filepath.Join(cardDir, "noid.md"),
 	}
-	os.WriteFile(c.FilePath, c.Serialize(), 0o644)
+	if err := os.WriteFile(c.FilePath, c.Serialize(), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
 
 	s := store.NewStore(stateDir, "testdeck")
 	rateFunc := cli.MakeRateFunc(s)
@@ -539,7 +543,9 @@ func TestRunInitOverwritesWithForce(t *testing.T) {
 	configPath := filepath.Join(configDir, "srs", "config.toml")
 	original, _ := os.ReadFile(configPath)
 
-	os.WriteFile(configPath, append(original, []byte("# extra\n")...), 0o644)
+	if err := os.WriteFile(configPath, append(original, []byte("# extra\n")...), 0o644); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
 
 	var stdout2, stderr2 bytes.Buffer
 	if err := cli.RunInit(configDir, dataDir, true, &stdout2, &stderr2); err != nil {
@@ -607,10 +613,22 @@ func TestRunInitIdempotentWithForce(t *testing.T) {
 func TestInitSubcommandCreatesFiles(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
-	os.Setenv("XDG_CONFIG_HOME", configDir)
-	os.Setenv("XDG_DATA_HOME", dataDir)
-	defer os.Unsetenv("XDG_CONFIG_HOME")
-	defer os.Unsetenv("XDG_DATA_HOME")
+	if err := os.Setenv("XDG_CONFIG_HOME", configDir); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	if err := os.Setenv("XDG_DATA_HOME", dataDir); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("XDG_CONFIG_HOME"); err != nil {
+			t.Fatalf("unsetenv: %v", err)
+		}
+	}()
+	defer func() {
+		if err := os.Unsetenv("XDG_DATA_HOME"); err != nil {
+			t.Fatalf("unsetenv: %v", err)
+		}
+	}()
 
 	buf := new(bytes.Buffer)
 	cli.SetOutput(buf)

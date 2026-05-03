@@ -12,8 +12,14 @@ import (
 // TestDataHomeUsesXDGDataHome checks that DataHome respects $XDG_DATA_HOME.
 func TestDataHomeUsesXDGDataHome(t *testing.T) {
 	custom := filepath.Join(t.TempDir(), "xdg-data")
-	os.Setenv("XDG_DATA_HOME", custom)
-	defer os.Unsetenv("XDG_DATA_HOME")
+	if err := os.Setenv("XDG_DATA_HOME", custom); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("XDG_DATA_HOME"); err != nil {
+			t.Fatalf("unsetenv: %v", err)
+		}
+	}()
 
 	got := paths.DataHome()
 	want := custom
@@ -24,7 +30,9 @@ func TestDataHomeUsesXDGDataHome(t *testing.T) {
 
 // TestDataHomeFallsBackToDefault verifies the default ~/.local/share fallback.
 func TestDataHomeFallsBackToDefault(t *testing.T) {
-	os.Unsetenv("XDG_DATA_HOME")
+	if err := os.Unsetenv("XDG_DATA_HOME"); err != nil {
+		t.Fatalf("unsetenv: %v", err)
+	}
 	home, _ := os.UserHomeDir()
 	want := filepath.Join(home, ".local", "share")
 
@@ -36,7 +44,9 @@ func TestDataHomeFallsBackToDefault(t *testing.T) {
 
 // TestDecksRootDefault confirms DecksRoot("") returns the standard SRS decks path.
 func TestDecksRootDefault(t *testing.T) {
-	os.Unsetenv("XDG_DATA_HOME")
+	if err := os.Unsetenv("XDG_DATA_HOME"); err != nil {
+		t.Fatalf("unsetenv: %v", err)
+	}
 	home, _ := os.UserHomeDir()
 	want := filepath.Join(home, ".local", "share", "srs", "decks")
 
@@ -87,8 +97,14 @@ func TestDecksRootExpandsTilde(t *testing.T) {
 // TestStateHomeUsesXDGStateHome checks that StateHome respects $XDG_STATE_HOME.
 func TestStateHomeUsesXDGStateHome(t *testing.T) {
 	custom := filepath.Join(t.TempDir(), "xdg-state")
-	os.Setenv("XDG_STATE_HOME", custom)
-	defer os.Unsetenv("XDG_STATE_HOME")
+	if err := os.Setenv("XDG_STATE_HOME", custom); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("XDG_STATE_HOME"); err != nil {
+			t.Fatalf("unsetenv: %v", err)
+		}
+	}()
 
 	got := paths.StateHome()
 	if got != custom {
@@ -99,8 +115,14 @@ func TestStateHomeUsesXDGStateHome(t *testing.T) {
 // TestConfigHomeUsesXDGConfigHome checks that ConfigHome respects $XDG_CONFIG_HOME.
 func TestConfigHomeUsesXDGConfigHome(t *testing.T) {
 	custom := filepath.Join(t.TempDir(), "xdg-config")
-	os.Setenv("XDG_CONFIG_HOME", custom)
-	defer os.Unsetenv("XDG_CONFIG_HOME")
+	if err := os.Setenv("XDG_CONFIG_HOME", custom); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("XDG_CONFIG_HOME"); err != nil {
+			t.Fatalf("unsetenv: %v", err)
+		}
+	}()
 
 	got := paths.ConfigHome()
 	if got != custom {
@@ -110,7 +132,9 @@ func TestConfigHomeUsesXDGConfigHome(t *testing.T) {
 
 // TestConfigHomeFallsBackToDefault verifies the default ~/.config fallback.
 func TestConfigHomeFallsBackToDefault(t *testing.T) {
-	os.Unsetenv("XDG_CONFIG_HOME")
+	if err := os.Unsetenv("XDG_CONFIG_HOME"); err != nil {
+		t.Fatalf("unsetenv: %v", err)
+	}
 	home, _ := os.UserHomeDir()
 	want := filepath.Join(home, ".config")
 
@@ -122,7 +146,9 @@ func TestConfigHomeFallsBackToDefault(t *testing.T) {
 
 // TestStateHomeFallsBackToDefault verifies the default ~/.local/state fallback.
 func TestStateHomeFallsBackToDefault(t *testing.T) {
-	os.Unsetenv("XDG_STATE_HOME")
+	if err := os.Unsetenv("XDG_STATE_HOME"); err != nil {
+		t.Fatalf("unsetenv: %v", err)
+	}
 	home, _ := os.UserHomeDir()
 	want := filepath.Join(home, ".local", "state")
 
