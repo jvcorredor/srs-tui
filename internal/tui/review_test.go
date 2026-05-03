@@ -62,6 +62,29 @@ func TestReviewQuitOnQ(t *testing.T) {
 	}
 }
 
+// TestReviewQuitOnQWhenDone verifies that pressing 'q' quits even after the
+// session is complete (m.done == true).
+func TestReviewQuitOnQWhenDone(t *testing.T) {
+	cards := []*card.Card{
+		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q", Back: "A"},
+	}
+	m := tui.NewReviewModel(cards, fakeRateFunc)
+	// Flip and rate the only card so the session ends.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = asReview(updated)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	m = asReview(updated)
+
+	if m.CurrentIndex() != 1 {
+		t.Fatalf("expected session to be done, index = %d", m.CurrentIndex())
+	}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd == nil {
+		t.Error("q should trigger quit even when session is done")
+	}
+}
+
 // fakeRateFunc is a stub RateFunc that returns fixed interval previews for
 // every rating, making tests deterministic and fast.
 func fakeRateFunc(c *card.Card, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
