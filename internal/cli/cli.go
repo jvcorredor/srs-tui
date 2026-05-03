@@ -65,6 +65,17 @@ func SetEditorRun(fn EditorRunFunc) {
 	editorRun = fn
 }
 
+// PickerRunFunc is the function used to launch the deck picker TUI.
+// It is swapped out in tests to avoid launching the interactive TUI.
+type PickerRunFunc func(decksRoot string) error
+
+var pickerRun PickerRunFunc = defaultPickerRun
+
+// SetPickerRun replaces the default picker runner with fn (used in tests).
+func SetPickerRun(fn PickerRunFunc) {
+	pickerRun = fn
+}
+
 // defaultEditorRun opens file in the editor defined by the EDITOR environment
 // variable, falling back to vi if EDITOR is not set.
 func defaultEditorRun(file string) error {
@@ -172,11 +183,54 @@ func defaultReviewRun(deckDir string) error {
 	return err
 }
 
+// defaultPickerRun discovers decks under decksRoot, builds a picker model,
+// and launches the interactive TUI. When the user selects a deck, it
+// transitions directly into the review session without restarting.
+func defaultPickerRun(decksRoot string) error {
+	deckPaths, err := deck.Discover(decksRoot)
+	if err != nil {
+		return fmt.Errorf("picker: %w", err)
+	}
+
+	now := time.Now()
+	var entries []tui.DeckEntry
+	for _, dp := range deckPaths {
+		count, _ := deck.DueCount(dp, now)
+		entries = append(entries, tui.DeckEntry{
+			Name:     filepath.Base(dp),
+			Path:     dp,
+			DueCount: count,
+		})
+	}
+
+	stateDir := filepath.Join(paths.StateHome(), "srs")
+	onSelect := func(e tui.DeckEntry) (tea.Model, tea.Cmd) {
+		items, qErr := deck.BuildQueue(e.Path)
+		if qErr != nil {
+			return nil, tea.Quit
+		}
+		deckSlug := filepath.Base(e.Path)
+		s := store.NewStore(stateDir, deckSlug)
+		rateFunc := MakeRateFunc(s)
+		return tui.NewReviewModel(items, rateFunc), nil
+	}
+
+	m := tui.NewPickerModel(entries, onSelect)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	_, err = p.Run()
+	return err
+}
+
 // NewRootCmd creates the root "srs" cobra command and attaches all subcommands.
+// When invoked with no arguments, it launches the deck picker.
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "srs",
 		Short: "Spaced repetition in the terminal",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			decksRoot := paths.DecksRoot("")
+			return pickerRun(decksRoot)
+		},
 	}
 	root.SetOut(rootOut)
 
@@ -187,16 +241,19 @@ func NewRootCmd() *cobra.Command {
 	return root
 }
 
-// newReviewCmd creates the "review <deck>" command.
+// newReviewCmd creates the "review [deck]" command. With no deck argument,
+// it launches the picker; with a deck name, it goes straight to review.
 func newReviewCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "review <deck>",
+		Use:   "review [deck]",
 		Short: "Review a deck of flashcards",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			deckName := args[0]
 			decksRoot := paths.DecksRoot("")
-			deckDir := filepath.Join(decksRoot, deckName)
+			if len(args) == 0 {
+				return pickerRun(decksRoot)
+			}
+			deckDir := filepath.Join(decksRoot, args[0])
 			return reviewRun(deckDir)
 		},
 	}
