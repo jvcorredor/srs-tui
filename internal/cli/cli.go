@@ -86,11 +86,11 @@ func MakeRateFunc(s *store.Store) tui.RateFunc {
 	return func(c *card.Card, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
 		prevState := fsrs.CardState{
 			State:      fsrs.NormalizeState(c.State),
-			Due:        fsrs.ParseTime(c.Due),
+			Due:       fsrs.ParseTime(c.Due),
 			Stability:  c.Stability,
 			Difficulty: c.Difficulty,
-			Reps:       c.Reps,
-			Lapses:     c.Lapses,
+			Reps:      c.Reps,
+			Lapses:    c.Lapses,
 		}
 
 		nextState, previews, err := fsrs.Rate(prevState, rating, now)
@@ -102,11 +102,11 @@ func MakeRateFunc(s *store.Store) tui.RateFunc {
 
 		entry := store.LogEntry{
 			Schema: 1,
-			TS:     now,
-			CardID: c.ID,
-			Rating: rating,
-			Prev:   prevState,
-			Next:   nextState,
+			TS:      now,
+			CardID:  c.ID,
+			Rating:  rating,
+			Prev:    prevState,
+			Next:    nextState,
 		}
 
 		c.State = string(nextState.State)
