@@ -1,3 +1,7 @@
+// Package cli implements the command-line interface for srs-tui.
+// It defines the cobra commands (review, new, version, init) and
+// the glue functions that wire the terminal UI, card storage, and
+// scheduling logic together.
 package cli
 
 import (
@@ -21,10 +25,13 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/tui"
 )
 
+// UsageError signals a CLI usage mistake (wrong arguments, missing flags, etc).
+// ExecuteWithArgs returns exit code 2 when the error chain contains a UsageError.
 type UsageError struct {
 	msg string
 }
 
+// Error returns the usage error message.
 func (e *UsageError) Error() string { return e.msg }
 
 var (
@@ -33,34 +40,44 @@ var (
 	date    = "unknown"
 )
 
+// SetVersion overrides the version, commit, and build date injected at link time.
 func SetVersion(v, c, d string) {
 	version = v
 	commit = c
 	date = d
 }
 
+// SetOutput redirects the root command's stdout/stderr to w for testing.
 func SetOutput(w io.Writer) {
 	rootOut = w
 }
 
 var rootOut io.Writer
 
+// ReviewRunFunc is the function used by the review command to start a review session.
+// It is swapped out in tests to avoid launching the interactive TUI.
 type ReviewRunFunc func(deckDir string) error
 
 var reviewRun ReviewRunFunc = defaultReviewRun
 
+// SetReviewRun replaces the default review runner with fn (used in tests).
 func SetReviewRun(fn ReviewRunFunc) {
 	reviewRun = fn
 }
 
+// EditorRunFunc is the function used by the new command to open a card in an editor.
+// It is swapped out in tests to avoid launching an external editor.
 type EditorRunFunc func(file string) error
 
 var editorRun EditorRunFunc = defaultEditorRun
 
+// SetEditorRun replaces the default editor runner with fn (used in tests).
 func SetEditorRun(fn EditorRunFunc) {
 	editorRun = fn
 }
 
+// defaultEditorRun opens file in the editor defined by the EDITOR environment
+// variable, falling back to vi if EDITOR is not set.
 func defaultEditorRun(file string) error {
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
@@ -73,6 +90,9 @@ func defaultEditorRun(file string) error {
 	return cmd.Run()
 }
 
+// MakeRateFunc builds a tui.RateFunc that rates a card using the FSRS algorithm,
+// persists the resulting state to the store's JSONL log and the card's Markdown
+// file, and returns the next state together with interval previews.
 func MakeRateFunc(s *store.Store) tui.RateFunc {
 	return func(c *card.Card, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
 		prevState := fsrs.CardState{
@@ -115,6 +135,8 @@ func MakeRateFunc(s *store.Store) tui.RateFunc {
 	}
 }
 
+// defaultReviewRun builds the review queue for deckDir, opens the interactive
+// Bubble Tea review session, and persists ratings via MakeRateFunc.
 func defaultReviewRun(deckDir string) error {
 	cards, err := deck.BuildQueue(deckDir)
 	if err != nil {
@@ -132,6 +154,7 @@ func defaultReviewRun(deckDir string) error {
 	return err
 }
 
+// NewRootCmd creates the root "srs" cobra command and attaches all subcommands.
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "srs",
@@ -146,6 +169,7 @@ func NewRootCmd() *cobra.Command {
 	return root
 }
 
+// newReviewCmd creates the "review <deck>" command.
 func newReviewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "review <deck>",
@@ -160,6 +184,7 @@ func newReviewCmd() *cobra.Command {
 	}
 }
 
+// newNewCmd creates the "new <deck> <name>" command for adding cards.
 func newNewCmd() *cobra.Command {
 	var cloze bool
 	var decksRoot string
@@ -209,6 +234,7 @@ func newNewCmd() *cobra.Command {
 	return cmd
 }
 
+// newVersionCmd creates the "version" command.
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
@@ -220,6 +246,7 @@ func newVersionCmd() *cobra.Command {
 	}
 }
 
+// newInitCmd creates the "init" command that scaffolds config and decks directories.
 func newInitCmd() *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
@@ -239,6 +266,9 @@ func newInitCmd() *cobra.Command {
 	return cmd
 }
 
+// RunInit scaffolds the default config.toml in configDir and the decks directory
+// in dataDir. If config.toml already exists and force is false, it prints a
+// warning to stderr and returns an error.
 func RunInit(configDir, dataDir string, force bool, stdout, stderr io.Writer) error {
 	srsConfigDir := filepath.Join(configDir, "srs")
 	configPath := filepath.Join(srsConfigDir, "config.toml")
@@ -265,10 +295,13 @@ func RunInit(configDir, dataDir string, force bool, stdout, stderr io.Writer) er
 	return nil
 }
 
+// Execute runs the root command with os.Args and returns an exit code.
 func Execute() int {
 	return ExecuteWithArgs(nil)
 }
 
+// ExecuteWithArgs runs the root command with the provided args (nil means os.Args)
+// and returns an exit code: 0 success, 1 runtime error, 2 usage error.
 func ExecuteWithArgs(args []string) int {
 	root := NewRootCmd()
 	if args != nil {
