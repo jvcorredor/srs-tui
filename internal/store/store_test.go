@@ -41,7 +41,7 @@ func TestAppendLogWritesOneJSONLinePerCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open jsonl: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	lineCount := 0
@@ -103,7 +103,7 @@ func TestAppendLogMultipleEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open jsonl: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	lineCount := 0
@@ -170,7 +170,9 @@ func TestRewriteCardAtomicNoTmpArtifact(t *testing.T) {
 		Front: "Q\n",
 		Back:  "A\n",
 	}
-	os.WriteFile(cardPath, orig.Serialize(), 0o644)
+	if err := os.WriteFile(cardPath, orig.Serialize(), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
 
 	s := store.NewStore(t.TempDir(), "mydeck")
 	orig.State = "learning"
@@ -215,7 +217,9 @@ func TestPersistWritesLogBeforeFrontmatter(t *testing.T) {
 		Front: "Q\n",
 		Back:  "A\n",
 	}
-	os.WriteFile(cardPath, c.Serialize(), 0o644)
+	if err := os.WriteFile(cardPath, c.Serialize(), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
 
 	stateDir := t.TempDir()
 	s := store.NewStore(stateDir, "mydeck")

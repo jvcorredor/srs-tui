@@ -1,11 +1,11 @@
 // Package tui implements the Bubble Tea review interface for spaced-repetition
 // cards. A review session follows a three-state lifecycle:
 //
-//   1. Front — the question side is displayed.
-//   2. Back — pressing Space or Enter reveals the answer and shows interval
-//      previews (again, hard, good, easy) computed by the scheduler.
-//   3. Rate — pressing a rating key (1–4) applies the score via RateFunc,
-//      advances to the next card, and returns to the front state.
+//  1. Front — the question side is displayed.
+//  2. Back — pressing Space or Enter reveals the answer and shows interval
+//     previews (again, hard, good, easy) computed by the scheduler.
+//  3. Rate — pressing a rating key (1–4) applies the score via RateFunc,
+//     advances to the next card, and returns to the front state.
 //
 // When every card has been rated the session ends and View signals completion.
 package tui
@@ -66,11 +66,11 @@ func (m ReviewModel) Init() tea.Cmd {
 
 // Update implements tea.Model. It handles the review lifecycle:
 //
-//   • Space / Enter — flip the current card to its back side and compute
+//   - Space / Enter — flip the current card to its back side and compute
 //     interval previews via the fsrs scheduler.
-//   • 1–4 — rate the card (only valid while the back is showing), advance
+//   - 1–4 — rate the card (only valid while the back is showing), advance
 //     to the next card, and clear previews.
-//   • q — emit tea.Quit to exit the application.
+//   - q — emit tea.Quit to exit the application.
 func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:

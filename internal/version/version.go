@@ -5,14 +5,18 @@ package version
 
 import "runtime/debug"
 
-var (
-	Version string
-	Commit  string
-	Date    string
-)
+// Version is the release version injected via ldflags at build time.
+var Version string
+
+// Commit is the Git commit hash injected via ldflags at build time.
+var Commit string
+
+// Date is the build timestamp injected via ldflags at build time.
+var Date string
 
 var readBuildInfo = debug.ReadBuildInfo
 
+// Info holds the resolved version metadata.
 type Info struct {
 	Version string `json:"version"`
 	Commit  string `json:"commit"`
@@ -20,6 +24,7 @@ type Info struct {
 	Source  string `json:"source"`
 }
 
+// Get resolves version metadata from ldflags, build info, or defaults.
 func Get() Info {
 	if Version != "" {
 		return Info{Version: Version, Commit: Commit, Date: Date, Source: "ldflags"}
