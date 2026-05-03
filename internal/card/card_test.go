@@ -11,6 +11,8 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/card"
 )
 
+// TestParseFile exercises ParseFile against golden files and edge cases
+// (missing frontmatter, missing ID, malformed YAML).
 func TestParseFile(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -87,6 +89,8 @@ func TestParseFile(t *testing.T) {
 	}
 }
 
+// TestRoundTripFSRSFields verifies that FSRS scheduling fields survive a
+// Serialize → Parse round-trip without loss of precision.
 func TestRoundTripFSRSFields(t *testing.T) {
 	c := &card.Card{
 		Meta: card.Meta{
@@ -129,6 +133,8 @@ func TestRoundTripFSRSFields(t *testing.T) {
 	}
 }
 
+// TestRoundTripBasicCard checks that a basic card's ID, Type, Front, and Back
+// survive a Parse → Serialize → Parse round-trip.
 func TestRoundTripBasicCard(t *testing.T) {
 	original, err := os.ReadFile("testdata/basic.md")
 	if err != nil {
