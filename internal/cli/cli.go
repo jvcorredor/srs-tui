@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jvcorredor/srs-tui/internal/card"
+	"github.com/jvcorredor/srs-tui/internal/config"
 	"github.com/jvcorredor/srs-tui/internal/deck"
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
 	"github.com/jvcorredor/srs-tui/internal/paths"
@@ -111,6 +113,7 @@ func NewRootCmd() *cobra.Command {
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newReviewCmd())
+	root.AddCommand(newInitCmd())
 	return root
 }
 
@@ -137,6 +140,51 @@ func newVersionCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newInitCmd() *cobra.Command {
+	var force bool
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Scaffold default config and decks directory",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return RunInit(
+				paths.ConfigHome(),
+				paths.DataHome(),
+				force,
+				cmd.OutOrStdout(),
+				cmd.OutOrStderr(),
+			)
+		},
+	}
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing config.toml")
+	return cmd
+}
+
+func RunInit(configDir, dataDir string, force bool, stdout, stderr io.Writer) error {
+	srsConfigDir := filepath.Join(configDir, "srs")
+	configPath := filepath.Join(srsConfigDir, "config.toml")
+
+	if _, err := os.Stat(configPath); err == nil && !force {
+		fmt.Fprintf(stderr, "config.toml already exists; use --force to overwrite\n")
+		return fmt.Errorf("config.toml already exists")
+	}
+
+	if err := os.MkdirAll(srsConfigDir, 0o755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, []byte(config.DefaultConfigContent()), 0o644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+
+	decksRoot := filepath.Join(dataDir, "srs", "decks")
+	if err := os.MkdirAll(decksRoot, 0o755); err != nil {
+		return fmt.Errorf("create decks root: %w", err)
+	}
+
+	fmt.Fprintf(stdout, "Created %s\nCreated %s\n", configPath, decksRoot)
+	return nil
 }
 
 func Execute() int {
