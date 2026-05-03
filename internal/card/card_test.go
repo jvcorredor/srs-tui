@@ -1,3 +1,6 @@
+// Package card_test contains integration tests for the card package.
+// Tests exercise the public API (Parse, ParseFile, Serialize, SerializeNew)
+// through real file I/O and round-trip validation.
 package card_test
 
 import (
