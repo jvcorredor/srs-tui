@@ -20,9 +20,10 @@ type LogEntry struct {
 	Schema int       `json:"schema"`
 	TS     time.Time `json:"ts"`
 	CardID string    `json:"card_id"`
-	// ClozeGroup is reserved for future cloze-deletion grouping; currently unused.
-	ClozeGroup *int `json:"cloze_group,omitempty"`
-	Rating     int  `json:"rating"`
+	// ClozeGroup is the cloze deletion group key (e.g. "c1") when reviewing a
+	// cloze card; nil for basic cards.
+	ClozeGroup *string `json:"cloze_group,omitempty"`
+	Rating     int     `json:"rating"`
 	// DurationMs is reserved for future review-duration tracking; currently unused.
 	DurationMs int64          `json:"duration_ms"`
 	Prev       fsrs.CardState `json:"prev"`

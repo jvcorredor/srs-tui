@@ -12,23 +12,26 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/jvcorredor/srs-tui/internal/card"
+	"github.com/jvcorredor/srs-tui/internal/deck"
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
 )
 
-// RateFunc applies a user rating to a card and returns the resulting state,
-// interval previews for all possible ratings, and any error.
-type RateFunc func(c *card.Card, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error)
+// RateFunc applies a user rating to a review item and returns the resulting
+// state, interval previews for all possible ratings, and any error.
+type RateFunc func(item *deck.ReviewItem, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error)
 
 // ReviewModel is a Bubble Tea model that drives a flash-card review session.
-// It manages a deck of cards, tracks which side is visible, and coordinates
-// with a RateFunc to schedule cards after each rating.
+// It manages a deck of review items, tracks which side is visible, and
+// coordinates with a RateFunc to schedule cards after each rating.
 type ReviewModel struct {
-	cards       []*card.Card
+	items       []deck.ReviewItem
 	index       int
 	showingBack bool
 	renderer    *glamour.TermRenderer
@@ -37,13 +40,13 @@ type ReviewModel struct {
 	done        bool
 }
 
-// NewReviewModel creates a ReviewModel for the given cards. The rateFunc is
-// invoked each time the user presses a rating key (1–4) while the back side
-// is visible.
-func NewReviewModel(cards []*card.Card, rateFunc RateFunc) ReviewModel {
+// NewReviewModel creates a ReviewModel for the given review items. The
+// rateFunc is invoked each time the user presses a rating key (1–4) while
+// the back side is visible.
+func NewReviewModel(items []deck.ReviewItem, rateFunc RateFunc) ReviewModel {
 	r, _ := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"))
 	return ReviewModel{
-		cards:    cards,
+		items:    items,
 		renderer: r,
 		rateFunc: rateFunc,
 	}
@@ -84,9 +87,9 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeySpace, tea.KeyEnter:
 			if !m.showingBack {
 				m.showingBack = true
-				if m.index < len(m.cards) {
-					c := m.cards[m.index]
-					cs := cardStateFromCard(c)
+				if m.index < len(m.items) {
+					it := &m.items[m.index]
+					cs := cardStateFromItem(it)
 					m.previews = fsrs.Preview(cs, time.Now())
 				}
 			}
@@ -94,15 +97,15 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "1", "2", "3", "4":
-			if m.showingBack && m.rateFunc != nil && m.index < len(m.cards) {
+			if m.showingBack && m.rateFunc != nil && m.index < len(m.items) {
 				rating := int(msg.String()[0] - '0')
-				c := m.cards[m.index]
-				_, _, err := m.rateFunc(c, rating, time.Now())
+				it := &m.items[m.index]
+				_, _, err := m.rateFunc(it, rating, time.Now())
 				if err == nil {
 					m.index++
 					m.showingBack = false
 					m.previews = nil
-					if m.index >= len(m.cards) {
+					if m.index >= len(m.items) {
 						m.done = true
 					}
 				}
@@ -117,16 +120,21 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // card (markdown formatted via glamour) and, when the back is showing,
 // appends the interval previews returned by the scheduler.
 func (m ReviewModel) View() string {
-	if len(m.cards) == 0 {
+	if len(m.items) == 0 {
 		return "No cards in this deck.\nPress q to quit."
 	}
 	if m.done {
 		return "Session complete!\nPress q to quit."
 	}
-	c := m.cards[m.index]
-	content := c.Front
-	if m.showingBack {
-		content = c.Back
+	it := &m.items[m.index]
+	var content string
+	if it.Card.Type == card.Cloze {
+		content = renderCloze(it.Card.Body, it.ClozeGroup, m.showingBack)
+	} else {
+		content = it.Card.Front
+		if m.showingBack {
+			content = it.Card.Back
+		}
 	}
 	rendered, _ := m.renderer.Render(content)
 	if m.showingBack && len(m.previews) > 0 {
@@ -135,17 +143,60 @@ func (m ReviewModel) View() string {
 	return rendered
 }
 
-// cardStateFromCard converts a card.Card into the fsrs.CardState used by the
-// scheduler.
-func cardStateFromCard(c *card.Card) fsrs.CardState {
-	return fsrs.CardState{
-		State:      fsrs.NormalizeState(c.State),
-		Due:        fsrs.ParseTime(c.Due),
-		Stability:  c.Stability,
-		Difficulty: c.Difficulty,
-		Reps:       c.Reps,
-		Lapses:     c.Lapses,
+// cardStateFromItem extracts the FSRS state from a review item. For cloze
+// cards it uses the per-group state; for basic cards it uses the flat fields.
+func cardStateFromItem(it *deck.ReviewItem) fsrs.CardState {
+	if it.Card.Type == card.Cloze && it.ClozeGroup != "" {
+		if g, ok := it.Card.Clozes[it.ClozeGroup]; ok {
+			return fsrs.CardState{
+				State:      fsrs.NormalizeState(g.State),
+				Due:        fsrs.ParseTime(g.Due),
+				Stability:  g.Stability,
+				Difficulty: g.Difficulty,
+				Reps:       g.Reps,
+				Lapses:     g.Lapses,
+			}
+		}
 	}
+	return fsrs.CardState{
+		State:      fsrs.NormalizeState(it.Card.State),
+		Due:        fsrs.ParseTime(it.Card.Due),
+		Stability:  it.Card.Stability,
+		Difficulty: it.Card.Difficulty,
+		Reps:       it.Card.Reps,
+		Lapses:     it.Card.Lapses,
+	}
+}
+
+var renderClozeRe = regexp.MustCompile(`\{\{c(\d+)::([^}]+)\}\}`)
+
+// renderCloze processes a cloze card body for display. If activeGroup is set
+// and showAnswer is false, that group's deletions are replaced with a
+// placeholder ([...] or [hint] if present). All other deletions are revealed.
+func renderCloze(body, activeGroup string, showAnswer bool) string {
+	return renderClozeRe.ReplaceAllStringFunc(body, func(match string) string {
+		parts := renderClozeRe.FindStringSubmatch(match)
+		if len(parts) < 3 {
+			return match
+		}
+		group := "c" + parts[1]
+		inner := parts[2]
+		// inner may be "answer" or "answer::hint"
+		var answer, hint string
+		if i := strings.Index(inner, "::"); i >= 0 {
+			answer = inner[:i]
+			hint = inner[i+2:]
+		} else {
+			answer = inner
+		}
+		if showAnswer || group != activeGroup {
+			return answer
+		}
+		if hint != "" {
+			return "[" + hint + "]"
+		}
+		return "[...]"
+	})
 }
 
 // formatPreviews renders a list of interval previews as rating labels with
