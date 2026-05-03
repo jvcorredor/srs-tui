@@ -1,3 +1,4 @@
+// Package paths_test contains unit tests for XDG path resolution.
 package paths_test
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/paths"
 )
 
+// TestDataHomeUsesXDGDataHome checks that DataHome respects $XDG_DATA_HOME.
 func TestDataHomeUsesXDGDataHome(t *testing.T) {
 	custom := filepath.Join(t.TempDir(), "xdg-data")
 	os.Setenv("XDG_DATA_HOME", custom)
@@ -20,6 +22,7 @@ func TestDataHomeUsesXDGDataHome(t *testing.T) {
 	}
 }
 
+// TestDataHomeFallsBackToDefault verifies the default ~/.local/share fallback.
 func TestDataHomeFallsBackToDefault(t *testing.T) {
 	os.Unsetenv("XDG_DATA_HOME")
 	home, _ := os.UserHomeDir()
@@ -31,6 +34,7 @@ func TestDataHomeFallsBackToDefault(t *testing.T) {
 	}
 }
 
+// TestDecksRootDefault confirms DecksRoot("") returns the standard SRS decks path.
 func TestDecksRootDefault(t *testing.T) {
 	os.Unsetenv("XDG_DATA_HOME")
 	home, _ := os.UserHomeDir()
@@ -42,6 +46,7 @@ func TestDecksRootDefault(t *testing.T) {
 	}
 }
 
+// TestDecksRootOverride checks that a non-empty override is passed through verbatim.
 func TestDecksRootOverride(t *testing.T) {
 	got := paths.DecksRoot("/custom/path")
 	want := "/custom/path"
@@ -50,6 +55,7 @@ func TestDecksRootOverride(t *testing.T) {
 	}
 }
 
+// TestExpandHome verifies tilde expansion to the user's home directory.
 func TestExpandHome(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	got := paths.ExpandHome("~/my/decks")
@@ -59,6 +65,7 @@ func TestExpandHome(t *testing.T) {
 	}
 }
 
+// TestExpandHomeNoTilde ensures that absolute paths without a tilde are left untouched.
 func TestExpandHomeNoTilde(t *testing.T) {
 	got := paths.ExpandHome("/absolute/path")
 	want := "/absolute/path"
@@ -67,6 +74,7 @@ func TestExpandHomeNoTilde(t *testing.T) {
 	}
 }
 
+// TestDecksRootExpandsTilde confirms that DecksRoot expands a leading "~".
 func TestDecksRootExpandsTilde(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	got := paths.DecksRoot("~/my-decks")
@@ -76,6 +84,7 @@ func TestDecksRootExpandsTilde(t *testing.T) {
 	}
 }
 
+// TestStateHomeUsesXDGStateHome checks that StateHome respects $XDG_STATE_HOME.
 func TestStateHomeUsesXDGStateHome(t *testing.T) {
 	custom := filepath.Join(t.TempDir(), "xdg-state")
 	os.Setenv("XDG_STATE_HOME", custom)
@@ -87,6 +96,7 @@ func TestStateHomeUsesXDGStateHome(t *testing.T) {
 	}
 }
 
+// TestConfigHomeUsesXDGConfigHome checks that ConfigHome respects $XDG_CONFIG_HOME.
 func TestConfigHomeUsesXDGConfigHome(t *testing.T) {
 	custom := filepath.Join(t.TempDir(), "xdg-config")
 	os.Setenv("XDG_CONFIG_HOME", custom)
@@ -98,6 +108,7 @@ func TestConfigHomeUsesXDGConfigHome(t *testing.T) {
 	}
 }
 
+// TestConfigHomeFallsBackToDefault verifies the default ~/.config fallback.
 func TestConfigHomeFallsBackToDefault(t *testing.T) {
 	os.Unsetenv("XDG_CONFIG_HOME")
 	home, _ := os.UserHomeDir()
@@ -109,6 +120,7 @@ func TestConfigHomeFallsBackToDefault(t *testing.T) {
 	}
 }
 
+// TestStateHomeFallsBackToDefault verifies the default ~/.local/state fallback.
 func TestStateHomeFallsBackToDefault(t *testing.T) {
 	os.Unsetenv("XDG_STATE_HOME")
 	home, _ := os.UserHomeDir()

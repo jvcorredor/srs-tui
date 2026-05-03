@@ -1,3 +1,4 @@
+// Package config_test contains unit tests for the config loader.
 package config_test
 
 import (
@@ -8,6 +9,8 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/config"
 )
 
+// TestLoadReturnsDefaultsWhenFileAbsent confirms that Load returns the
+// built-in defaults when no config.toml exists.
 func TestLoadReturnsDefaultsWhenFileAbsent(t *testing.T) {
 	cfg, err := config.Load(t.TempDir())
 	if err != nil {
@@ -29,6 +32,8 @@ func TestLoadReturnsDefaultsWhenFileAbsent(t *testing.T) {
 	}
 }
 
+// TestLoadParsesV1KeysFromConfigToml verifies that every documented config
+// key is read correctly from a real TOML file.
 func TestLoadParsesV1KeysFromConfigToml(t *testing.T) {
 	dir := t.TempDir()
 	srsDir := filepath.Join(dir, "srs")
@@ -71,6 +76,8 @@ style = "light"
 	}
 }
 
+// TestLoadPartialConfigKeepsDefaults checks that omitted sections fall back
+// to defaults rather than zero values.
 func TestLoadPartialConfigKeepsDefaults(t *testing.T) {
 	dir := t.TempDir()
 	srsDir := filepath.Join(dir, "srs")
@@ -102,6 +109,8 @@ new_per_day = 5
 	}
 }
 
+// TestLoadExpandsTildeInDecksRoot ensures that a leading "~" in decks_root
+// is expanded to the user's home directory.
 func TestLoadExpandsTildeInDecksRoot(t *testing.T) {
 	dir := t.TempDir()
 	srsDir := filepath.Join(dir, "srs")

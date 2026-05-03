@@ -1,3 +1,6 @@
+// Package version_test contains unit tests for the version resolution package.
+// Tests exercise all three tiers (ldflags, BuildInfo, sentinel defaults) and
+// verify JSON serialization.
 package version_test
 
 import (
@@ -8,6 +11,8 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/version"
 )
 
+// TestGetReturnsSentinelDefaultsWhenNothingResolved checks the fallback
+// dev/unknown/unknown/default values when no ldflags or BuildInfo are present.
 func TestGetReturnsSentinelDefaultsWhenNothingResolved(t *testing.T) {
 	defer version.SwapForTest("", "", "", func() (*debug.BuildInfo, bool) { return nil, false })()
 
@@ -27,6 +32,8 @@ func TestGetReturnsSentinelDefaultsWhenNothingResolved(t *testing.T) {
 	}
 }
 
+// TestGetUsesLdflagsValuesWhenSet verifies that injected ldflags variables
+// take precedence over BuildInfo.
 func TestGetUsesLdflagsValuesWhenSet(t *testing.T) {
 	defer version.SwapForTest("v1.2.3", "abc1234", "2026-05-03T12:00:00Z", func() (*debug.BuildInfo, bool) {
 		t.Fatal("readBuildInfo should not be consulted when ldflags vars are set")
@@ -49,6 +56,8 @@ func TestGetUsesLdflagsValuesWhenSet(t *testing.T) {
 	}
 }
 
+// TestGetReadsBuildInfoWhenLdflagsEmpty checks that BuildInfo is consulted
+// when ldflags variables are empty, extracting version, commit, and time.
 func TestGetReadsBuildInfoWhenLdflagsEmpty(t *testing.T) {
 	fixture := &debug.BuildInfo{
 		Main: debug.Module{Version: "v0.5.1"},
@@ -75,6 +84,8 @@ func TestGetReadsBuildInfoWhenLdflagsEmpty(t *testing.T) {
 	}
 }
 
+// TestGetUsesDefaultsWhenBuildInfoMainVersionDevel ensures that a (devel)
+// BuildInfo version falls through to sentinel defaults.
 func TestGetUsesDefaultsWhenBuildInfoMainVersionDevel(t *testing.T) {
 	fixture := &debug.BuildInfo{
 		Main: debug.Module{Version: "(devel)"},
@@ -91,6 +102,8 @@ func TestGetUsesDefaultsWhenBuildInfoMainVersionDevel(t *testing.T) {
 	}
 }
 
+// TestInfoJSONRoundTrip validates that Info marshals to JSON with the
+// expected keys and unmarshals back without loss.
 func TestInfoJSONRoundTrip(t *testing.T) {
 	original := version.Info{
 		Version: "v0.2.0",

@@ -1,3 +1,6 @@
+// Package store_test contains integration tests for the store package.
+// Tests exercise the public API (AppendLog, Persist, RewriteCard, EnsureID)
+// through real file I/O and round-trip validation.
 package store_test
 
 import (
@@ -13,6 +16,8 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/store"
 )
 
+// TestAppendLogWritesOneJSONLinePerCall checks that a single AppendLog call
+// produces exactly one valid JSON line with the expected fields.
 func TestAppendLogWritesOneJSONLinePerCall(t *testing.T) {
 	dir := t.TempDir()
 	s := store.NewStore(dir, "mydeck")
@@ -73,6 +78,8 @@ func TestAppendLogWritesOneJSONLinePerCall(t *testing.T) {
 	}
 }
 
+// TestAppendLogMultipleEntries verifies that consecutive AppendLog calls
+// append multiple independent JSON lines to the log file.
 func TestAppendLogMultipleEntries(t *testing.T) {
 	dir := t.TempDir()
 	s := store.NewStore(dir, "mydeck")
@@ -112,6 +119,8 @@ func TestAppendLogMultipleEntries(t *testing.T) {
 	}
 }
 
+// TestAppendLogIncludesClozeGroupWhenSet confirms that the ClozeGroup
+// field is marshaled when non-nil and omitted when nil.
 func TestAppendLogIncludesClozeGroupWhenSet(t *testing.T) {
 	dir := t.TempDir()
 	s := store.NewStore(dir, "mydeck")
@@ -146,6 +155,8 @@ func TestAppendLogIncludesClozeGroupWhenSet(t *testing.T) {
 	}
 }
 
+// TestRewriteCardAtomicNoTmpArtifact checks that RewriteCard leaves no
+// temporary files behind and correctly updates card frontmatter fields.
 func TestRewriteCardAtomicNoTmpArtifact(t *testing.T) {
 	cardDir := t.TempDir()
 	cardPath := filepath.Join(cardDir, "test.md")
@@ -189,6 +200,8 @@ func TestRewriteCardAtomicNoTmpArtifact(t *testing.T) {
 	}
 }
 
+// TestPersistWritesLogBeforeFrontmatter verifies that Persist writes the
+// review log entry and updates the card file with the new FSRS state.
 func TestPersistWritesLogBeforeFrontmatter(t *testing.T) {
 	cardDir := t.TempDir()
 	cardPath := filepath.Join(cardDir, "test.md")
@@ -240,6 +253,8 @@ func TestPersistWritesLogBeforeFrontmatter(t *testing.T) {
 	}
 }
 
+// TestEnsureIDAssignsUUIDv7WhenCardLacksID confirms that EnsureID generates
+// a UUID v7 and returns true when the card has no ID.
 func TestEnsureIDAssignsUUIDv7WhenCardLacksID(t *testing.T) {
 	c := &card.Card{
 		Meta: card.Meta{
@@ -262,6 +277,8 @@ func TestEnsureIDAssignsUUIDv7WhenCardLacksID(t *testing.T) {
 	}
 }
 
+// TestEnsureIDNoOpWhenCardHasID ensures that EnsureID is a no-op and
+// returns false when the card already has an ID.
 func TestEnsureIDNoOpWhenCardHasID(t *testing.T) {
 	c := &card.Card{
 		Meta: card.Meta{
