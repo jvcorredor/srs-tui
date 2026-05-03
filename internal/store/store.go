@@ -1,3 +1,6 @@
+// Package store persists review logs and card state for SRS decks.
+// It writes JSONL review entries and performs atomic rewrites of
+// Markdown card files so that crashes never leave data partially updated.
 package store
 
 import (
@@ -12,23 +15,29 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
 )
 
+// LogEntry is a single review event recorded as one JSON line.
 type LogEntry struct {
-	Schema     int            `json:"schema"`
-	TS         time.Time      `json:"ts"`
-	CardID     string         `json:"card_id"`
-	ClozeGroup *int           `json:"cloze_group,omitempty"`
-	Rating     int            `json:"rating"`
+	Schema int       `json:"schema"`
+	TS     time.Time `json:"ts"`
+	CardID string    `json:"card_id"`
+	// ClozeGroup is reserved for future cloze-deletion grouping; currently unused.
+	ClozeGroup *int `json:"cloze_group,omitempty"`
+	Rating int `json:"rating"`
+	// DurationMs is reserved for future review-duration tracking; currently unused.
 	DurationMs int64          `json:"duration_ms"`
 	Prev       fsrs.CardState `json:"prev"`
 	Next       fsrs.CardState `json:"next"`
 }
 
+// Store manages the on-disk state for one deck.
 type Store struct {
 	stateDir string
 	deckSlug string
 	logPath  string
 }
 
+// NewStore creates a Store that persists data under stateDir for deckSlug.
+// Review logs are written to stateDir/deckSlug.jsonl.
 func NewStore(stateDir, deckSlug string) *Store {
 	return &Store{
 		stateDir: stateDir,
@@ -37,6 +46,8 @@ func NewStore(stateDir, deckSlug string) *Store {
 	}
 }
 
+// AppendLog marshals entry as JSON and appends it to the review log
+// file, creating the state directory and log file if necessary.
 func (s *Store) AppendLog(entry LogEntry) error {
 	if err := os.MkdirAll(s.stateDir, 0o755); err != nil {
 		return err
@@ -59,6 +70,9 @@ func (s *Store) AppendLog(entry LogEntry) error {
 	return f.Sync()
 }
 
+// AtomicWriteFile writes data to path by creating a temporary file in the
+// same directory, syncing it, and renaming it over path. This guarantees
+// that path never contains a partially written file.
 func AtomicWriteFile(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "*.tmp")
@@ -88,10 +102,13 @@ func AtomicWriteFile(path string, data []byte) error {
 	return nil
 }
 
+// RewriteCard serializes c and atomically overwrites cardPath.
 func (s *Store) RewriteCard(cardPath string, c *card.Card) error {
 	return AtomicWriteFile(cardPath, c.Serialize())
 }
 
+// Persist records a review log entry and updates the on-disk card file.
+// Both operations must succeed; the log is written before the card is rewritten.
 func (s *Store) Persist(entry LogEntry, cardPath string, c *card.Card) error {
 	if err := s.AppendLog(entry); err != nil {
 		return fmt.Errorf("store: persist log: %w", err)
@@ -102,6 +119,8 @@ func (s *Store) Persist(entry LogEntry, cardPath string, c *card.Card) error {
 	return nil
 }
 
+// EnsureID assigns a UUID v7 to c if it does not already have an ID.
+// It returns true when an ID was assigned and false if the card already had one.
 func EnsureID(c *card.Card) bool {
 	if c.ID != "" {
 		return false
@@ -114,6 +133,11 @@ func EnsureID(c *card.Card) bool {
 	return true
 }
 
+// StateDir returns the directory where review logs are stored.
 func (s *Store) StateDir() string { return s.stateDir }
+
+// DeckSlug returns the identifier used for this deck's log file name.
 func (s *Store) DeckSlug() string { return s.deckSlug }
-func (s *Store) LogPath() string  { return s.logPath }
+
+// LogPath returns the full path to the JSONL review log file.
+func (s *Store) LogPath() string { return s.logPath }

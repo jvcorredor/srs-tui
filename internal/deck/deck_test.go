@@ -1,3 +1,6 @@
+// Package deck_test contains integration tests for the deck package.
+// Tests exercise the public API (Discover, BuildQueue) through real
+// filesystem operations in temporary directories.
 package deck_test
 
 import (
@@ -10,6 +13,7 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/deck"
 )
 
+// writeBasicCard creates a minimal valid card file in dir named id+".md".
 func writeBasicCard(t *testing.T, dir, id, front, back string) {
 	t.Helper()
 	c := &card.Card{
@@ -28,6 +32,8 @@ func writeBasicCard(t *testing.T, dir, id, front, back string) {
 	}
 }
 
+// TestDiscoverDecks verifies that Discover returns only immediate
+// subdirectories and ignores regular files.
 func TestDiscoverDecks(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "french"), 0o755)
@@ -57,6 +63,8 @@ func TestDiscoverDecks(t *testing.T) {
 	}
 }
 
+// TestDiscoverFollowsSymlinks checks that symlinked directories are
+// included in the discovered deck list.
 func TestDiscoverFollowsSymlinks(t *testing.T) {
 	root := t.TempDir()
 	realDir := t.TempDir()
@@ -82,6 +90,8 @@ func TestDiscoverFollowsSymlinks(t *testing.T) {
 	}
 }
 
+// TestQueueContainsAllCardsShuffled confirms that BuildQueue finds every
+// card in the deck and returns them in a shuffled order.
 func TestQueueContainsAllCardsShuffled(t *testing.T) {
 	root := t.TempDir()
 	deckDir := filepath.Join(root, "mydeck")
@@ -110,6 +120,8 @@ func TestQueueContainsAllCardsShuffled(t *testing.T) {
 	}
 }
 
+// TestQueueSkipsNonCardFiles ensures that BuildQueue ignores Markdown
+// files that are not valid cards (e.g. missing frontmatter or ID).
 func TestQueueSkipsNonCardFiles(t *testing.T) {
 	root := t.TempDir()
 	deckDir := filepath.Join(root, "mydeck")
