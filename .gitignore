@@ -1,0 +1,27 @@
+# Go
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+coverage.txt
+coverage.html
+
+# macOS
+.DS_Store
+._*
+
+# Build artifacts
+/srs
+/dist/
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
