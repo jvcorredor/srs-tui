@@ -235,7 +235,9 @@ func TestMakeRateFuncUpdatesOnlyActiveClozeGroup(t *testing.T) {
 		Body:     "{{c1::A}} and {{c2::B}}\n",
 		FilePath: filepath.Join(cardDir, "cloze-1.md"),
 	}
-	os.WriteFile(c.FilePath, c.Serialize(), 0o644)
+	if err := os.WriteFile(c.FilePath, c.Serialize(), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 
 	s := store.NewStore(stateDir, "testdeck")
 	rateFunc := cli.MakeRateFunc(s)
@@ -264,7 +266,7 @@ func TestMakeRateFuncUpdatesOnlyActiveClozeGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open jsonl: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
