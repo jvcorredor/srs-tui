@@ -1,4 +1,10 @@
-// Package config loads and provides default application configuration.
+// Package config loads and provides application settings for srs-tui.
+//
+// Configuration is read from a TOML file located at
+// <config-dir>/srs/config.toml, where <config-dir> defaults to
+// $XDG_CONFIG_HOME or ~/.config.  When the file is missing, Load
+// returns the built-in defaults.  All settings are optional; any
+// key omitted from the file keeps its default value.
 package config
 
 import (
@@ -9,22 +15,27 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/paths"
 )
 
+// PathsConfig holds directory-path settings.
 type PathsConfig struct {
 	DecksRoot string `toml:"decks_root"`
 }
 
+// ReviewConfig holds review-session settings.
 type ReviewConfig struct {
 	NewPerDay int `toml:"new_per_day"`
 }
 
+// EditorConfig holds external-editor settings.
 type EditorConfig struct {
 	Command string `toml:"command"`
 }
 
+// RenderConfig holds TUI rendering settings.
 type RenderConfig struct {
 	Style string `toml:"style"`
 }
 
+// Config is the top-level configuration aggregate.
 type Config struct {
 	Paths  PathsConfig  `toml:"paths"`
 	Review ReviewConfig `toml:"review"`
@@ -32,6 +43,7 @@ type Config struct {
 	Render RenderConfig `toml:"render"`
 }
 
+// Defaults returns a Config populated with built-in defaults.
 func Defaults() *Config {
 	return &Config{
 		Paths: PathsConfig{
@@ -49,6 +61,10 @@ func Defaults() *Config {
 	}
 }
 
+// Load reads config.toml from <configDir>/srs and returns the merged
+// result.  Missing files are treated as an empty config, so defaults
+// are always preserved.  Tilde characters in DecksRoot are expanded
+// to the user's home directory.
 func Load(configDir string) (*Config, error) {
 	cfg := Defaults()
 	p := filepath.Join(configDir, "srs", "config.toml")
@@ -66,6 +82,8 @@ func Load(configDir string) (*Config, error) {
 	return cfg, nil
 }
 
+// DefaultConfigContent returns the text embedded in a newly scaffolded
+// config.toml file, including commented documentation for every section.
 func DefaultConfigContent() string {
 	return `# [paths]
 # decks_root = ""    # Default: $XDG_DATA_HOME/srs/decks
