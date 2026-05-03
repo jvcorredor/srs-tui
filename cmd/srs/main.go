@@ -1,8 +1,4 @@
-// srs is a terminal UI for spaced-repetition flashcards.
-//
-// It exposes sub-commands for reviewing decks, creating cards, and
-// managing configuration.  The real logic lives in internal/cli; this
-// file is the minimal entry point that delegates to it.
+// Command srs is the terminal spaced-repetition application entry point.
 package main
 
 import (

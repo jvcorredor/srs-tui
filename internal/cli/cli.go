@@ -1,3 +1,4 @@
+// Package cli implements the command-line interface and subcommands.
 package cli
 
 import (
