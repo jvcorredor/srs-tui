@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/paths"
 	"github.com/jvcorredor/srs-tui/internal/store"
 	"github.com/jvcorredor/srs-tui/internal/tui"
+	"github.com/jvcorredor/srs-tui/internal/version"
 )
 
 type UsageError struct {
@@ -26,18 +28,6 @@ type UsageError struct {
 }
 
 func (e *UsageError) Error() string { return e.msg }
-
-var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
-)
-
-func SetVersion(v, c, d string) {
-	version = v
-	commit = c
-	date = d
-}
 
 func SetOutput(w io.Writer) {
 	rootOut = w
@@ -210,14 +200,26 @@ func newNewCmd() *cobra.Command {
 }
 
 func newVersionCmd() *cobra.Command {
-	return &cobra.Command{
+	var format string
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print version info",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintf(cmd.OutOrStdout(), "srs %s\ncommit: %s\ndate:   %s\n", version, commit, date)
+			info := version.Get()
+			switch format {
+			case "text":
+				fmt.Fprintf(cmd.OutOrStdout(), "srs %s\ncommit: %s\ndate:   %s\n", info.Version, info.Commit, info.Date)
+			case "json":
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				return enc.Encode(info)
+			default:
+				return &UsageError{msg: fmt.Sprintf("--format: must be \"text\" or \"json\", got %q", format)}
+			}
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&format, "format", "text", `output format: "text" or "json"`)
+	return cmd
 }
 
 func newInitCmd() *cobra.Command {
