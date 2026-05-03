@@ -290,9 +290,9 @@ func TestRoundTripClozeCard(t *testing.T) {
 // TestExtractClozeGroups finds all unique deletion groups in a body string.
 func TestExtractClozeGroups(t *testing.T) {
 	tests := []struct {
-		name  string
-		body  string
-		want  []string
+		name string
+		body string
+		want []string
 	}{
 		{
 			name: "single group",
