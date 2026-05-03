@@ -1,0 +1,131 @@
+package deck_test
+
+import (
+	"os"
+	"path/filepath"
+	"sort"
+	"testing"
+
+	"github.com/jvcorredor/srs-tui/internal/card"
+	"github.com/jvcorredor/srs-tui/internal/deck"
+)
+
+func writeBasicCard(t *testing.T, dir, id, front, back string) {
+	t.Helper()
+	c := &card.Card{
+		Meta: card.Meta{
+			Schema:  1,
+			ID:      id,
+			Type:    card.Basic,
+			Created: "2026-01-01T00:00:00Z",
+		},
+		Front: front + "\n",
+		Back:  back + "\n",
+	}
+	err := os.WriteFile(filepath.Join(dir, id+".md"), c.Serialize(), 0o644)
+	if err != nil {
+		t.Fatalf("write card: %v", err)
+	}
+}
+
+func TestDiscoverDecks(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "french"), 0o755)
+	os.MkdirAll(filepath.Join(root, "golang"), 0o755)
+	os.MkdirAll(filepath.Join(root, "golang", "basics"), 0o755)
+	os.WriteFile(filepath.Join(root, "random.txt"), []byte("not a deck"), 0o644)
+
+	got, err := deck.Discover(root)
+	if err != nil {
+		t.Fatalf("Discover() error: %v", err)
+	}
+
+	names := make([]string, len(got))
+	for i, d := range got {
+		names[i] = filepath.Base(d)
+	}
+	sort.Strings(names)
+
+	want := []string{"french", "golang"}
+	if len(names) != len(want) {
+		t.Fatalf("decks = %v, want %v", names, want)
+	}
+	for i, n := range names {
+		if n != want[i] {
+			t.Errorf("decks[%d] = %q, want %q", i, n, want[i])
+		}
+	}
+}
+
+func TestDiscoverFollowsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	realDir := t.TempDir()
+	os.MkdirAll(filepath.Join(realDir, "cards"), 0o755)
+	os.Symlink(realDir, filepath.Join(root, "linked"))
+
+	got, err := deck.Discover(root)
+	if err != nil {
+		t.Fatalf("Discover() error: %v", err)
+	}
+	names := make([]string, len(got))
+	for i, d := range got {
+		names[i] = filepath.Base(d)
+	}
+	found := false
+	for _, n := range names {
+		if n == "linked" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected symlinked deck 'linked' in %v", names)
+	}
+}
+
+func TestQueueContainsAllCardsShuffled(t *testing.T) {
+	root := t.TempDir()
+	deckDir := filepath.Join(root, "mydeck")
+	os.MkdirAll(deckDir, 0o755)
+
+	writeBasicCard(t, deckDir, "id-1", "Q1", "A1")
+	writeBasicCard(t, deckDir, "id-2", "Q2", "A2")
+	writeBasicCard(t, deckDir, "id-3", "Q3", "A3")
+
+	q, err := deck.BuildQueue(deckDir)
+	if err != nil {
+		t.Fatalf("BuildQueue() error: %v", err)
+	}
+	if len(q) != 3 {
+		t.Fatalf("queue length = %d, want 3", len(q))
+	}
+
+	ids := make(map[string]bool)
+	for _, c := range q {
+		ids[c.ID] = true
+	}
+	for _, want := range []string{"id-1", "id-2", "id-3"} {
+		if !ids[want] {
+			t.Errorf("queue missing card %q", want)
+		}
+	}
+}
+
+func TestQueueSkipsNonCardFiles(t *testing.T) {
+	root := t.TempDir()
+	deckDir := filepath.Join(root, "mydeck")
+	os.MkdirAll(deckDir, 0o755)
+
+	writeBasicCard(t, deckDir, "id-1", "Q1", "A1")
+	os.WriteFile(filepath.Join(deckDir, "readme.md"), []byte("# Deck\nNo frontmatter\n"), 0o644)
+
+	q, err := deck.BuildQueue(deckDir)
+	if err != nil {
+		t.Fatalf("BuildQueue() error: %v", err)
+	}
+	if len(q) != 1 {
+		t.Fatalf("queue length = %d, want 1 (non-card files skipped)", len(q))
+	}
+	if q[0].ID != "id-1" {
+		t.Errorf("queue[0].ID = %q, want %q", q[0].ID, "id-1")
+	}
+}
