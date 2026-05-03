@@ -1,3 +1,6 @@
+// Package fsrs_test contains integration-style tests for the fsrs scheduling
+// package. Tests exercise the public API (Preview, Rate, NormalizeState) and
+// verify behaviour through exported types rather than implementation details.
 package fsrs_test
 
 import (
@@ -7,6 +10,8 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
 )
 
+// TestRateNewCardReturnsNextStateAndPreviews checks that rating a new card
+// produces a non-empty next state, positive stability, and four preview entries.
 func TestRateNewCardReturnsNextStateAndPreviews(t *testing.T) {
 	card := fsrs.CardState{State: fsrs.StateNew}
 	now := time.Now()
@@ -34,6 +39,8 @@ func TestRateNewCardReturnsNextStateAndPreviews(t *testing.T) {
 	}
 }
 
+// TestRateNewCardAgainGoesToLearning verifies that rating a new card Again
+// (rating 1) moves it to the learning state.
 func TestRateNewCardAgainGoesToLearning(t *testing.T) {
 	card := fsrs.CardState{State: fsrs.StateNew}
 	now := time.Now()
@@ -47,6 +54,8 @@ func TestRateNewCardAgainGoesToLearning(t *testing.T) {
 	}
 }
 
+// TestRateNewCardGoodGoesToLearning verifies that rating a new card Good
+// (rating 3) moves it to the learning state.
 func TestRateNewCardGoodGoesToLearning(t *testing.T) {
 	card := fsrs.CardState{State: fsrs.StateNew}
 	now := time.Now()
@@ -60,6 +69,8 @@ func TestRateNewCardGoodGoesToLearning(t *testing.T) {
 	}
 }
 
+// TestRateNewCardEasyGoesToReview verifies that rating a new card Easy
+// (rating 4) skips learning and moves it directly to the review state.
 func TestRateNewCardEasyGoesToReview(t *testing.T) {
 	card := fsrs.CardState{State: fsrs.StateNew}
 	now := time.Now()
@@ -73,6 +84,8 @@ func TestRateNewCardEasyGoesToReview(t *testing.T) {
 	}
 }
 
+// TestPreviewReturnsFourIntervals ensures Preview returns one entry for each
+// of the four FSRS ratings and that all intervals are non-negative.
 func TestPreviewReturnsFourIntervals(t *testing.T) {
 	card := fsrs.CardState{State: fsrs.StateNew}
 	now := time.Now()
@@ -95,6 +108,8 @@ func TestPreviewReturnsFourIntervals(t *testing.T) {
 	}
 }
 
+// TestNormalizeState checks that empty strings map to StateNew and that
+// known state strings are preserved.
 func TestNormalizeState(t *testing.T) {
 	if fsrs.NormalizeState("") != fsrs.StateNew {
 		t.Errorf("NormalizeState(\"\") = %q, want %q", fsrs.NormalizeState(""), fsrs.StateNew)
