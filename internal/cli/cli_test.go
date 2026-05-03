@@ -41,3 +41,29 @@ func TestExecuteReturnsZero(t *testing.T) {
 		t.Errorf("Execute() = %d, want 0", code)
 	}
 }
+
+func TestReviewCommandRequiresDeckArg(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cli.SetOutput(buf)
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"review"})
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when deck arg missing")
+	}
+}
+
+func TestReviewCommandAcceptsDeckArg(t *testing.T) {
+	cli.SetOutput(io.Discard)
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"review", "french"})
+	cmd.SetOut(io.Discard)
+	fakeRun := func(deckDir string) error { return nil }
+	cli.SetReviewRun(fakeRun)
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
