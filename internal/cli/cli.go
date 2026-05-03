@@ -79,18 +79,33 @@ func defaultEditorRun(file string) error {
 	return cmd.Run()
 }
 
-// MakeRateFunc builds a tui.RateFunc that rates a card using the FSRS algorithm,
-// persists the resulting state to the store's JSONL log and the card's Markdown
-// file, and returns the next state together with interval previews.
+// MakeRateFunc builds a tui.RateFunc that rates a review item using the FSRS
+// algorithm, persists the resulting state to the store's JSONL log and the
+// card's Markdown file, and returns the next state together with interval
+// previews. For cloze cards, only the active group's state is updated.
 func MakeRateFunc(s *store.Store) tui.RateFunc {
-	return func(c *card.Card, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
-		prevState := fsrs.CardState{
-			State:      fsrs.NormalizeState(c.State),
-			Due:        fsrs.ParseTime(c.Due),
-			Stability:  c.Stability,
-			Difficulty: c.Difficulty,
-			Reps:       c.Reps,
-			Lapses:     c.Lapses,
+	return func(it *deck.ReviewItem, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
+		var prevState fsrs.CardState
+		if it.Card.Type == card.Cloze && it.ClozeGroup != "" {
+			if g, ok := it.Card.Clozes[it.ClozeGroup]; ok {
+				prevState = fsrs.CardState{
+					State:      fsrs.NormalizeState(g.State),
+					Due:        fsrs.ParseTime(g.Due),
+					Stability:  g.Stability,
+					Difficulty: g.Difficulty,
+					Reps:       g.Reps,
+					Lapses:     g.Lapses,
+				}
+			}
+		} else {
+			prevState = fsrs.CardState{
+				State:      fsrs.NormalizeState(it.Card.State),
+				Due:        fsrs.ParseTime(it.Card.Due),
+				Stability:  it.Card.Stability,
+				Difficulty: it.Card.Difficulty,
+				Reps:       it.Card.Reps,
+				Lapses:     it.Card.Lapses,
+			}
 		}
 
 		nextState, previews, err := fsrs.Rate(prevState, rating, now)
@@ -98,25 +113,39 @@ func MakeRateFunc(s *store.Store) tui.RateFunc {
 			return fsrs.CardState{}, nil, err
 		}
 
-		store.EnsureID(c)
+		store.EnsureID(it.Card)
 
 		entry := store.LogEntry{
 			Schema: 1,
 			TS:     now,
-			CardID: c.ID,
+			CardID: it.Card.ID,
 			Rating: rating,
 			Prev:   prevState,
 			Next:   nextState,
 		}
+		if it.ClozeGroup != "" {
+			entry.ClozeGroup = &it.ClozeGroup
+		}
 
-		c.State = string(nextState.State)
-		c.Due = nextState.Due.Format(time.RFC3339)
-		c.Stability = nextState.Stability
-		c.Difficulty = nextState.Difficulty
-		c.Reps = nextState.Reps
-		c.Lapses = nextState.Lapses
+		if it.Card.Type == card.Cloze && it.ClozeGroup != "" {
+			g := it.Card.Clozes[it.ClozeGroup]
+			g.State = string(nextState.State)
+			g.Due = nextState.Due.Format(time.RFC3339)
+			g.Stability = nextState.Stability
+			g.Difficulty = nextState.Difficulty
+			g.Reps = nextState.Reps
+			g.Lapses = nextState.Lapses
+			it.Card.Clozes[it.ClozeGroup] = g
+		} else {
+			it.Card.State = string(nextState.State)
+			it.Card.Due = nextState.Due.Format(time.RFC3339)
+			it.Card.Stability = nextState.Stability
+			it.Card.Difficulty = nextState.Difficulty
+			it.Card.Reps = nextState.Reps
+			it.Card.Lapses = nextState.Lapses
+		}
 
-		if err := s.Persist(entry, c.FilePath, c); err != nil {
+		if err := s.Persist(entry, it.Card.FilePath, it.Card); err != nil {
 			return nextState, previews, fmt.Errorf("persist: %w", err)
 		}
 
@@ -127,7 +156,7 @@ func MakeRateFunc(s *store.Store) tui.RateFunc {
 // defaultReviewRun builds the review queue for deckDir, opens the interactive
 // Bubble Tea review session, and persists ratings via MakeRateFunc.
 func defaultReviewRun(deckDir string) error {
-	cards, err := deck.BuildQueue(deckDir)
+	items, err := deck.BuildQueue(deckDir)
 	if err != nil {
 		return fmt.Errorf("review: %w", err)
 	}
@@ -137,7 +166,7 @@ func defaultReviewRun(deckDir string) error {
 	s := store.NewStore(stateDir, deckSlug)
 	rateFunc := MakeRateFunc(s)
 
-	m := tui.NewReviewModel(cards, rateFunc)
+	m := tui.NewReviewModel(items, rateFunc)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err = p.Run()
 	return err
