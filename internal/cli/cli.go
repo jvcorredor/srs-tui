@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -16,6 +19,12 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/store"
 	"github.com/jvcorredor/srs-tui/internal/tui"
 )
+
+type UsageError struct {
+	msg string
+}
+
+func (e *UsageError) Error() string { return e.msg }
 
 var (
 	version = "dev"
@@ -41,6 +50,26 @@ var reviewRun ReviewRunFunc = defaultReviewRun
 
 func SetReviewRun(fn ReviewRunFunc) {
 	reviewRun = fn
+}
+
+type EditorRunFunc func(file string) error
+
+var editorRun EditorRunFunc = defaultEditorRun
+
+func SetEditorRun(fn EditorRunFunc) {
+	editorRun = fn
+}
+
+func defaultEditorRun(file string) error {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+	cmd := exec.Command(editor, file)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func MakeRateFunc(s *store.Store) tui.RateFunc {
@@ -111,6 +140,7 @@ func NewRootCmd() *cobra.Command {
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newReviewCmd())
+	root.AddCommand(newNewCmd())
 	return root
 }
 
@@ -128,6 +158,55 @@ func newReviewCmd() *cobra.Command {
 	}
 }
 
+func newNewCmd() *cobra.Command {
+	var cloze bool
+	var decksRoot string
+
+	cmd := &cobra.Command{
+		Use:   "new <deck> <name>",
+		Short: "Create a new card and open it in your editor",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 2 {
+				return &UsageError{msg: fmt.Sprintf("accepts 2 arg(s), received %d", len(args))}
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			deckName := args[0]
+			cardName := args[1]
+
+			root := paths.DecksRoot(decksRoot)
+			deckDir := filepath.Join(root, deckName)
+			cardPath := filepath.Join(deckDir, cardName+".md")
+
+			if _, err := os.Stat(cardPath); err == nil {
+				return fmt.Errorf("new: %s already exists", cardPath)
+			}
+
+			if err := os.MkdirAll(deckDir, 0o755); err != nil {
+				return fmt.Errorf("new: create deck dir: %w", err)
+			}
+
+			cardType := card.Basic
+			if cloze {
+				cardType = card.Cloze
+			}
+			c := card.NewCard(cardType, time.Now())
+
+			if err := store.AtomicWriteFile(cardPath, c.SerializeNew()); err != nil {
+				return fmt.Errorf("new: %w", err)
+			}
+
+			return editorRun(cardPath)
+		},
+	}
+
+	cmd.Flags().BoolVar(&cloze, "cloze", false, "create a cloze-deletion card")
+	cmd.Flags().StringVar(&decksRoot, "decks-root", "", "root directory for decks")
+
+	return cmd
+}
+
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
@@ -140,8 +219,22 @@ func newVersionCmd() *cobra.Command {
 }
 
 func Execute() int {
+	return ExecuteWithArgs(nil)
+}
+
+func ExecuteWithArgs(args []string) int {
 	root := NewRootCmd()
-	if err := root.Execute(); err != nil {
+	if args != nil {
+		root.SetArgs(args)
+	}
+	root.SetOut(rootOut)
+	root.SetErr(rootOut)
+	err := root.Execute()
+	if err != nil {
+		var usageErr *UsageError
+		if errors.As(err, &usageErr) {
+			return 2
+		}
 		return 1
 	}
 	return 0
