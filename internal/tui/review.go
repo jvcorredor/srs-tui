@@ -72,12 +72,14 @@ func (m ReviewModel) Init() tea.Cmd {
 //     to the next card, and clear previews.
 //   • q — emit tea.Quit to exit the application.
 func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.done {
-		return m, nil
-	}
-
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if msg.String() == "q" {
+			return m, tea.Quit
+		}
+		if m.done {
+			return m, nil
+		}
 		switch msg.Type {
 		case tea.KeySpace, tea.KeyEnter:
 			if !m.showingBack {
@@ -91,8 +93,6 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch msg.String() {
-		case "q":
-			return m, tea.Quit
 		case "1", "2", "3", "4":
 			if m.showingBack && m.rateFunc != nil && m.index < len(m.cards) {
 				rating := int(msg.String()[0] - '0')
