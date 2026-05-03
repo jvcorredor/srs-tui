@@ -1,8 +1,4 @@
-// Package card implements the Markdown card file model used by srs-tui.
-//
-// A card is stored as a Markdown file with YAML frontmatter followed by
-// ## Front and ## Back sections. The frontmatter contains metadata such as
-// ID, type, creation time, and FSRS scheduling fields.
+// Package card parses and serializes markdown flashcard files.
 package card
 
 import (
@@ -17,17 +13,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Type describes the kind of card.
 type Type string
 
 const (
-	// Basic is a standard question/answer card.
 	Basic Type = "basic"
-	// Cloze is a fill-in-the-blank card.
 	Cloze Type = "cloze"
 )
 
-// Meta holds the YAML frontmatter for a card.
 type Meta struct {
 	Schema     int      `yaml:"schema"`
 	ID         string   `yaml:"id"`
@@ -42,7 +34,6 @@ type Meta struct {
 	Lapses     int      `yaml:"lapses,omitempty"`
 }
 
-// Card represents a spaced-repetition card backed by a Markdown file.
 type Card struct {
 	Meta
 	Front    string
@@ -53,7 +44,6 @@ type Card struct {
 var frontHeading = regexp.MustCompile(`(?m)^## Front\s*$`)
 var backHeading = regexp.MustCompile(`(?m)^## Back\s*$`)
 
-// NewCard creates a new card with a generated UUID v7 and the given type.
 func NewCard(cardType Type, now time.Time) *Card {
 	id, _ := uuid.NewV7()
 	return &Card{
@@ -67,8 +57,6 @@ func NewCard(cardType Type, now time.Time) *Card {
 	}
 }
 
-// ParseFile reads a Markdown card file and parses it into a Card.
-// The file path is recorded in the returned Card's FilePath field.
 func ParseFile(path string) (*Card, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -84,8 +72,6 @@ func ParseFile(path string) (*Card, error) {
 	return c, nil
 }
 
-// Parse converts raw Markdown bytes into a Card.
-// If the data has no frontmatter or no ID, it returns nil, nil.
 func Parse(data []byte) (*Card, error) {
 	fm, body, err := splitFrontmatter(data)
 	if err != nil {
@@ -105,8 +91,6 @@ func Parse(data []byte) (*Card, error) {
 	}, nil
 }
 
-// Serialize writes the card back to its Markdown representation,
-// including YAML frontmatter and Front/Back sections.
 func (c *Card) Serialize() []byte {
 	fmData, _ := yaml.Marshal(&c.Meta)
 	var b strings.Builder
@@ -126,9 +110,6 @@ func (c *Card) Serialize() []byte {
 	return []byte(b.String())
 }
 
-// SerializeNew returns a minimal Markdown template for a newly created card.
-// For cloze cards it includes a placeholder; for basic cards it provides
-// empty Front and Back headings.
 func (c *Card) SerializeNew() []byte {
 	fmData, _ := yaml.Marshal(&c.Meta)
 	var b strings.Builder
@@ -143,8 +124,6 @@ func (c *Card) SerializeNew() []byte {
 	return []byte(b.String())
 }
 
-// splitFrontmatter extracts the YAML frontmatter and the remaining body from data.
-// If there is no frontmatter, it returns nil, data, nil.
 func splitFrontmatter(data []byte) (*Meta, []byte, error) {
 	if !bytes.HasPrefix(data, []byte("---\n")) {
 		return nil, data, nil
@@ -163,8 +142,6 @@ func splitFrontmatter(data []byte) (*Meta, []byte, error) {
 	return &meta, body, nil
 }
 
-// splitBody extracts the front and back text from the Markdown body
-// by looking for ## Front and ## Back headings.
 func splitBody(body string) (front, back string) {
 	loc := frontHeading.FindStringIndex(body)
 	if loc != nil {
