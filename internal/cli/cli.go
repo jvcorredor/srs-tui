@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/paths"
 	"github.com/jvcorredor/srs-tui/internal/store"
 	"github.com/jvcorredor/srs-tui/internal/tui"
+	"github.com/jvcorredor/srs-tui/internal/version"
 )
 
 // UsageError signals a CLI usage mistake (wrong arguments, missing flags, etc).
@@ -33,19 +35,6 @@ type UsageError struct {
 
 // Error returns the usage error message.
 func (e *UsageError) Error() string { return e.msg }
-
-var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
-)
-
-// SetVersion overrides the version, commit, and build date injected at link time.
-func SetVersion(v, c, d string) {
-	version = v
-	commit = c
-	date = d
-}
 
 // SetOutput redirects the root command's stdout/stderr to w for testing.
 func SetOutput(w io.Writer) {
@@ -97,11 +86,11 @@ func MakeRateFunc(s *store.Store) tui.RateFunc {
 	return func(c *card.Card, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
 		prevState := fsrs.CardState{
 			State:      fsrs.NormalizeState(c.State),
-			Due:       fsrs.ParseTime(c.Due),
+			Due:        fsrs.ParseTime(c.Due),
 			Stability:  c.Stability,
 			Difficulty: c.Difficulty,
-			Reps:      c.Reps,
-			Lapses:    c.Lapses,
+			Reps:       c.Reps,
+			Lapses:     c.Lapses,
 		}
 
 		nextState, previews, err := fsrs.Rate(prevState, rating, now)
@@ -113,11 +102,11 @@ func MakeRateFunc(s *store.Store) tui.RateFunc {
 
 		entry := store.LogEntry{
 			Schema: 1,
-			TS:      now,
-			CardID:  c.ID,
-			Rating:  rating,
-			Prev:    prevState,
-			Next:    nextState,
+			TS:     now,
+			CardID: c.ID,
+			Rating: rating,
+			Prev:   prevState,
+			Next:   nextState,
 		}
 
 		c.State = string(nextState.State)
@@ -236,14 +225,26 @@ func newNewCmd() *cobra.Command {
 
 // newVersionCmd creates the "version" command.
 func newVersionCmd() *cobra.Command {
-	return &cobra.Command{
+	var format string
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print version info",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintf(cmd.OutOrStdout(), "srs %s\ncommit: %s\ndate:   %s\n", version, commit, date)
+			info := version.Get()
+			switch format {
+			case "text":
+				fmt.Fprintf(cmd.OutOrStdout(), "srs %s\ncommit: %s\ndate:   %s\n", info.Version, info.Commit, info.Date)
+			case "json":
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				return enc.Encode(info)
+			default:
+				return &UsageError{msg: fmt.Sprintf("--format: must be \"text\" or \"json\", got %q", format)}
+			}
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&format, "format", "text", `output format: "text" or "json"`)
+	return cmd
 }
 
 // newInitCmd creates the "init" command that scaffolds config and decks directories.

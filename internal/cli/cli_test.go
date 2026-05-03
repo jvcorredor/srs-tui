@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -15,14 +16,19 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/cli"
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
 	"github.com/jvcorredor/srs-tui/internal/store"
+	"github.com/jvcorredor/srs-tui/internal/version"
 )
 
+// noBuildInfo returns nil to simulate a binary built without debug info.
+func noBuildInfo() (*debug.BuildInfo, bool) { return nil, false }
+
 // TestVersionCommandPrintsVersion checks that the version subcommand prints the
-// version string, commit hash, and build date set by SetVersion.
+// version string, commit hash, and build date in text format.
 func TestVersionCommandPrintsVersion(t *testing.T) {
+	defer version.SwapForTest("0.0.0-dev", "abc1234", "2026-01-01", noBuildInfo)()
+
 	buf := new(bytes.Buffer)
 	cli.SetOutput(buf)
-	cli.SetVersion("0.0.0-dev", "abc1234", "2026-01-01")
 
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"version"})
@@ -41,6 +47,52 @@ func TestVersionCommandPrintsVersion(t *testing.T) {
 	}
 	if !strings.Contains(out, "2026-01-01") {
 		t.Errorf("version output missing date: got %q", out)
+	}
+}
+
+// TestVersionCommandJSONFormat verifies that version --format=json outputs
+// valid JSON matching the version.Info struct.
+func TestVersionCommandJSONFormat(t *testing.T) {
+	defer version.SwapForTest("v0.2.0", "abc1234", "2026-05-03T12:00:00Z", noBuildInfo)()
+
+	buf := new(bytes.Buffer)
+	cli.SetOutput(buf)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"version", "--format=json"})
+	cmd.SetOut(buf)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("version --format=json failed: %v", err)
+	}
+
+	var got version.Info
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput=%q", err, buf.String())
+	}
+
+	want := version.Info{Version: "v0.2.0", Commit: "abc1234", Date: "2026-05-03T12:00:00Z", Source: "ldflags"}
+	if got != want {
+		t.Errorf("Info = %+v, want %+v", got, want)
+	}
+}
+
+// TestVersionCommandRejectsUnknownFormat checks that version fails when given
+// an unsupported --format value.
+func TestVersionCommandRejectsUnknownFormat(t *testing.T) {
+	defer version.SwapForTest("v0.2.0", "abc", "2026-05-03", noBuildInfo)()
+
+	buf := new(bytes.Buffer)
+	cli.SetOutput(buf)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"version", "--format=yaml"})
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown --format value")
 	}
 }
 
