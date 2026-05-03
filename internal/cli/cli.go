@@ -3,8 +3,14 @@ package cli
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
+
+	"github.com/jvcorredor/srs-tui/internal/deck"
+	"github.com/jvcorredor/srs-tui/internal/paths"
+	"github.com/jvcorredor/srs-tui/internal/tui"
 )
 
 var (
@@ -25,6 +31,25 @@ func SetOutput(w io.Writer) {
 
 var rootOut io.Writer
 
+type ReviewRunFunc func(deckDir string) error
+
+var reviewRun ReviewRunFunc = defaultReviewRun
+
+func SetReviewRun(fn ReviewRunFunc) {
+	reviewRun = fn
+}
+
+func defaultReviewRun(deckDir string) error {
+	cards, err := deck.BuildQueue(deckDir)
+	if err != nil {
+		return fmt.Errorf("review: %w", err)
+	}
+	m := tui.NewReviewModel(cards)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	_, err = p.Run()
+	return err
+}
+
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "srs",
@@ -33,7 +58,22 @@ func NewRootCmd() *cobra.Command {
 	root.SetOut(rootOut)
 
 	root.AddCommand(newVersionCmd())
+	root.AddCommand(newReviewCmd())
 	return root
+}
+
+func newReviewCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "review <deck>",
+		Short: "Review a deck of flashcards",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			deckName := args[0]
+			decksRoot := paths.DecksRoot("")
+			deckDir := filepath.Join(decksRoot, deckName)
+			return reviewRun(deckDir)
+		},
+	}
 }
 
 func newVersionCmd() *cobra.Command {
