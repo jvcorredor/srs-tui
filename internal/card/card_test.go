@@ -162,3 +162,181 @@ func TestRoundTripBasicCard(t *testing.T) {
 		t.Errorf("roundtrip Back = %q, want %q", parsed2.Back, c.Back)
 	}
 }
+
+// TestParseClozeCardCapturesBody verifies that a cloze card without ## Front/
+// ## Back headings has its body text captured in the Body field.
+func TestParseClozeCardCapturesBody(t *testing.T) {
+	got, err := card.ParseFile("testdata/cloze_single.md")
+	if err != nil {
+		t.Fatalf("ParseFile() error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("ParseFile() = nil, want card")
+	}
+	if got.Type != card.Cloze {
+		t.Errorf("Type = %v, want %v", got.Type, card.Cloze)
+	}
+	wantBody := "The capital of France is {{c1::Paris}}.\n"
+	if got.Body != wantBody {
+		t.Errorf("Body = %q, want %q", got.Body, wantBody)
+	}
+}
+
+// TestParseClozeCardWithGroups verifies that a cloze card with a clozes: map
+// in frontmatter parses each group's FSRS state correctly.
+func TestParseClozeCardWithGroups(t *testing.T) {
+	got, err := card.ParseFile("testdata/cloze_multi.md")
+	if err != nil {
+		t.Fatalf("ParseFile() error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("ParseFile() = nil, want card")
+	}
+	if got.Type != card.Cloze {
+		t.Errorf("Type = %v, want %v", got.Type, card.Cloze)
+	}
+	if len(got.Clozes) != 2 {
+		t.Fatalf("len(Clozes) = %d, want 2", len(got.Clozes))
+	}
+	c1, ok := got.Clozes["c1"]
+	if !ok {
+		t.Fatal("missing c1 in Clozes")
+	}
+	if c1.State != "review" {
+		t.Errorf("c1.State = %q, want %q", c1.State, "review")
+	}
+	if c1.Due != "2026-02-15T10:30:00Z" {
+		t.Errorf("c1.Due = %q, want %q", c1.Due, "2026-02-15T10:30:00Z")
+	}
+	if c1.Stability != 12.5 {
+		t.Errorf("c1.Stability = %v, want %v", c1.Stability, 12.5)
+	}
+	if c1.Difficulty != 5.2 {
+		t.Errorf("c1.Difficulty = %v, want %v", c1.Difficulty, 5.2)
+	}
+	if c1.Reps != 4 {
+		t.Errorf("c1.Reps = %d, want %d", c1.Reps, 4)
+	}
+	if c1.Lapses != 1 {
+		t.Errorf("c1.Lapses = %d, want %d", c1.Lapses, 1)
+	}
+	c2, ok := got.Clozes["c2"]
+	if !ok {
+		t.Fatal("missing c2 in Clozes")
+	}
+	if c2.State != "learning" {
+		t.Errorf("c2.State = %q, want %q", c2.State, "learning")
+	}
+	if c2.Stability != 1.5 {
+		t.Errorf("c2.Stability = %v, want %v", c2.Stability, 1.5)
+	}
+}
+
+// TestRoundTripClozeCard checks that a cloze card's ID, Type, Body, and
+// per-group FSRS fields survive a Parse → Serialize → Parse round-trip.
+func TestRoundTripClozeCard(t *testing.T) {
+	original, err := os.ReadFile("testdata/cloze_multi.md")
+	if err != nil {
+		t.Fatalf("read testdata: %v", err)
+	}
+	c, err := card.Parse(original)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	serialized := c.Serialize()
+	parsed2, err := card.Parse(serialized)
+	if err != nil {
+		t.Fatalf("Parse(roundtrip) error: %v", err)
+	}
+	if parsed2.ID != c.ID {
+		t.Errorf("roundtrip ID = %q, want %q", parsed2.ID, c.ID)
+	}
+	if parsed2.Type != c.Type {
+		t.Errorf("roundtrip Type = %v, want %v", parsed2.Type, c.Type)
+	}
+	if parsed2.Body != c.Body {
+		t.Errorf("roundtrip Body = %q, want %q", parsed2.Body, c.Body)
+	}
+	if len(parsed2.Clozes) != len(c.Clozes) {
+		t.Fatalf("roundtrip len(Clozes) = %d, want %d", len(parsed2.Clozes), len(c.Clozes))
+	}
+	for key, want := range c.Clozes {
+		got, ok := parsed2.Clozes[key]
+		if !ok {
+			t.Errorf("roundtrip missing Clozes[%q]", key)
+			continue
+		}
+		if got.State != want.State {
+			t.Errorf("roundtrip Clozes[%q].State = %q, want %q", key, got.State, want.State)
+		}
+		if got.Due != want.Due {
+			t.Errorf("roundtrip Clozes[%q].Due = %q, want %q", key, got.Due, want.Due)
+		}
+		if got.Stability != want.Stability {
+			t.Errorf("roundtrip Clozes[%q].Stability = %v, want %v", key, got.Stability, want.Stability)
+		}
+		if got.Difficulty != want.Difficulty {
+			t.Errorf("roundtrip Clozes[%q].Difficulty = %v, want %v", key, got.Difficulty, want.Difficulty)
+		}
+		if got.Reps != want.Reps {
+			t.Errorf("roundtrip Clozes[%q].Reps = %d, want %d", key, got.Reps, want.Reps)
+		}
+		if got.Lapses != want.Lapses {
+			t.Errorf("roundtrip Clozes[%q].Lapses = %d, want %d", key, got.Lapses, want.Lapses)
+		}
+	}
+}
+
+// TestExtractClozeGroups finds all unique deletion groups in a body string.
+func TestExtractClozeGroups(t *testing.T) {
+	tests := []struct {
+		name  string
+		body  string
+		want  []string
+	}{
+		{
+			name: "single group",
+			body: "The capital of France is {{c1::Paris}}.",
+			want: []string{"c1"},
+		},
+		{
+			name: "multiple groups",
+			body: "{{c1::Paris}} is in {{c2::France}}.",
+			want: []string{"c1", "c2"},
+		},
+		{
+			name: "group with hint",
+			body: "The answer is {{c1::42::a number}}.",
+			want: []string{"c1"},
+		},
+		{
+			name: "duplicate groups deduplicated",
+			body: "{{c1::A}} and {{c1::B}} are both c1.",
+			want: []string{"c1"},
+		},
+		{
+			name: "no groups",
+			body: "Plain text without cloze.",
+			want: nil,
+		},
+		{
+			name: "mixed groups unordered",
+			body: "{{c2::second}} {{c1::first}}",
+			want: []string{"c1", "c2"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := card.ExtractClozeGroups(tt.body)
+			if len(got) != len(tt.want) {
+				t.Errorf("ExtractClozeGroups() = %v, want %v", got, tt.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("ExtractClozeGroups()[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}

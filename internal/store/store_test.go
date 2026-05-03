@@ -125,7 +125,7 @@ func TestAppendLogIncludesClozeGroupWhenSet(t *testing.T) {
 	dir := t.TempDir()
 	s := store.NewStore(dir, "mydeck")
 
-	clozeGroup := 2
+	clozeGroup := "c1"
 	entry := store.LogEntry{
 		Schema:     1,
 		TS:         time.Now().UTC().Truncate(time.Millisecond),
@@ -151,7 +151,7 @@ func TestAppendLogIncludesClozeGroupWhenSet(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if got.ClozeGroup == nil || *got.ClozeGroup != clozeGroup {
-		t.Errorf("cloze_group = %v, want %d", got.ClozeGroup, clozeGroup)
+		t.Errorf("cloze_group = %v, want %q", got.ClozeGroup, clozeGroup)
 	}
 }
 

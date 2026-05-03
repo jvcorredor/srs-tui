@@ -32,6 +32,25 @@ func writeBasicCard(t *testing.T, dir, id, front, back string) {
 	}
 }
 
+// writeClozeCard creates a cloze card file in dir named id+".md".
+func writeClozeCard(t *testing.T, dir, id, body string, clozes map[string]card.ClozeGroup) {
+	t.Helper()
+	c := &card.Card{
+		Meta: card.Meta{
+			Schema:  1,
+			ID:      id,
+			Type:    card.Cloze,
+			Created: "2026-01-01T00:00:00Z",
+			Clozes:  clozes,
+		},
+		Body: body + "\n",
+	}
+	err := os.WriteFile(filepath.Join(dir, id+".md"), c.Serialize(), 0o644)
+	if err != nil {
+		t.Fatalf("write cloze card: %v", err)
+	}
+}
+
 // TestDiscoverDecks verifies that Discover returns only immediate
 // subdirectories and ignores regular files.
 func TestDiscoverDecks(t *testing.T) {
@@ -124,8 +143,8 @@ func TestQueueContainsAllCardsShuffled(t *testing.T) {
 	}
 
 	ids := make(map[string]bool)
-	for _, c := range q {
-		ids[c.ID] = true
+	for _, it := range q {
+		ids[it.Card.ID] = true
 	}
 	for _, want := range []string{"id-1", "id-2", "id-3"} {
 		if !ids[want] {
@@ -155,7 +174,49 @@ func TestQueueSkipsNonCardFiles(t *testing.T) {
 	if len(q) != 1 {
 		t.Fatalf("queue length = %d, want 1 (non-card files skipped)", len(q))
 	}
-	if q[0].ID != "id-1" {
-		t.Errorf("queue[0].ID = %q, want %q", q[0].ID, "id-1")
+	if q[0].Card.ID != "id-1" {
+		t.Errorf("queue[0].Card.ID = %q, want %q", q[0].Card.ID, "id-1")
+	}
+}
+
+// TestQueueEnumeratesClozeGroups checks that a cloze card produces one
+// ReviewItem per unique cloze group, while basic cards produce a single item.
+func TestQueueEnumeratesClozeGroups(t *testing.T) {
+	root := t.TempDir()
+	deckDir := filepath.Join(root, "mydeck")
+	os.MkdirAll(deckDir, 0o755)
+
+	writeBasicCard(t, deckDir, "basic-1", "Q1", "A1")
+	writeClozeCard(t, deckDir, "cloze-1", "{{c1::A}} and {{c2::B}}", nil)
+
+	q, err := deck.BuildQueue(deckDir)
+	if err != nil {
+		t.Fatalf("BuildQueue() error: %v", err)
+	}
+	if len(q) != 3 {
+		t.Fatalf("queue length = %d, want 3 (1 basic + 2 cloze groups)", len(q))
+	}
+
+	// Find items by card ID + group
+	items := make(map[string]string) // cardID -> clozeGroup
+	for _, it := range q {
+		key := it.Card.ID
+		if it.ClozeGroup != "" {
+			key += "/" + it.ClozeGroup
+		}
+		items[key] = it.ClozeGroup
+	}
+
+	if _, ok := items["basic-1"]; !ok {
+		t.Errorf("missing basic card in queue")
+	}
+	if items["basic-1"] != "" {
+		t.Errorf("basic card should have empty ClozeGroup, got %q", items["basic-1"])
+	}
+	if _, ok := items["cloze-1/c1"]; !ok {
+		t.Errorf("missing cloze-1/c1 in queue")
+	}
+	if _, ok := items["cloze-1/c2"]; !ok {
+		t.Errorf("missing cloze-1/c2 in queue")
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jvcorredor/srs-tui/internal/card"
+	"github.com/jvcorredor/srs-tui/internal/deck"
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
 	"github.com/jvcorredor/srs-tui/internal/tui"
 )
@@ -22,13 +23,26 @@ func asReview(m tea.Model) tui.ReviewModel {
 	return m.(tui.ReviewModel)
 }
 
+// basicItem is a helper that builds a single basic ReviewItem for tests.
+func basicItem(id, front, back string) deck.ReviewItem {
+	return deck.ReviewItem{
+		Card: &card.Card{Meta: card.Meta{ID: id, Type: card.Basic}, Front: front, Back: back},
+	}
+}
+
+// clozeItem is a helper that builds a cloze ReviewItem for tests.
+func clozeItem(id, body, group string) deck.ReviewItem {
+	return deck.ReviewItem{
+		Card:       &card.Card{Meta: card.Meta{ID: id, Type: card.Cloze}, Body: body},
+		ClozeGroup: group,
+	}
+}
+
 // TestReviewFlipOnSpace verifies that pressing Space reveals the back of the
 // current card.
 func TestReviewFlipOnSpace(t *testing.T) {
-	cards := []*card.Card{
-		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q", Back: "A"},
-	}
-	m := tui.NewReviewModel(cards, nil)
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, nil)
 	if m.ShowingBack() {
 		t.Error("should start showing front")
 	}
@@ -40,10 +54,8 @@ func TestReviewFlipOnSpace(t *testing.T) {
 
 // TestReviewFlipOnEnter verifies that pressing Enter also reveals the back.
 func TestReviewFlipOnEnter(t *testing.T) {
-	cards := []*card.Card{
-		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q", Back: "A"},
-	}
-	m := tui.NewReviewModel(cards, nil)
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, nil)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if !asReview(updated).ShowingBack() {
 		t.Error("enter should flip to back")
@@ -52,10 +64,8 @@ func TestReviewFlipOnEnter(t *testing.T) {
 
 // TestReviewQuitOnQ verifies that pressing 'q' returns a tea.Quit command.
 func TestReviewQuitOnQ(t *testing.T) {
-	cards := []*card.Card{
-		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q", Back: "A"},
-	}
-	m := tui.NewReviewModel(cards, nil)
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, nil)
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	if cmd == nil {
 		t.Error("q should trigger quit")
@@ -65,10 +75,8 @@ func TestReviewQuitOnQ(t *testing.T) {
 // TestReviewQuitOnQWhenDone verifies that pressing 'q' quits even after the
 // session is complete (m.done == true).
 func TestReviewQuitOnQWhenDone(t *testing.T) {
-	cards := []*card.Card{
-		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q", Back: "A"},
-	}
-	m := tui.NewReviewModel(cards, fakeRateFunc)
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, fakeRateFunc)
 	// Flip and rate the only card so the session ends.
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
@@ -87,7 +95,7 @@ func TestReviewQuitOnQWhenDone(t *testing.T) {
 
 // fakeRateFunc is a stub RateFunc that returns fixed interval previews for
 // every rating, making tests deterministic and fast.
-func fakeRateFunc(c *card.Card, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
+func fakeRateFunc(item *deck.ReviewItem, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
 	next := fsrs.CardState{State: fsrs.StateLearning, Stability: 1.5}
 	previews := []fsrs.IntervalPreview{
 		{Rating: 1, State: fsrs.StateLearning, Interval: 1 * time.Minute},
@@ -101,11 +109,11 @@ func fakeRateFunc(c *card.Card, rating int, now time.Time) (fsrs.CardState, []fs
 // TestRatingKeyAdvancesCard checks that rating a flipped card moves the
 // session to the next card and resets the view to the front side.
 func TestRatingKeyAdvancesCard(t *testing.T) {
-	cards := []*card.Card{
-		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q1", Back: "A1"},
-		{Meta: card.Meta{ID: "2", Type: card.Basic}, Front: "Q2", Back: "A2"},
+	items := []deck.ReviewItem{
+		basicItem("1", "Q1", "A1"),
+		basicItem("2", "Q2", "A2"),
 	}
-	m := tui.NewReviewModel(cards, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
 
@@ -122,10 +130,8 @@ func TestRatingKeyAdvancesCard(t *testing.T) {
 // TestRatingKeyShowsIntervalPreviewsOnBack confirms that the rendered view
 // includes preview labels (Again, Hard, etc.) once the card is flipped.
 func TestRatingKeyShowsIntervalPreviewsOnBack(t *testing.T) {
-	cards := []*card.Card{
-		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q", Back: "A"},
-	}
-	m := tui.NewReviewModel(cards, fakeRateFunc)
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, fakeRateFunc)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
 
@@ -138,13 +144,13 @@ func TestRatingKeyShowsIntervalPreviewsOnBack(t *testing.T) {
 // TestAllFourRatingKeysAccepted validates that every rating key (1–4) can be
 // used to advance through a multi-card session without error.
 func TestAllFourRatingKeysAccepted(t *testing.T) {
-	cards := []*card.Card{
-		{Meta: card.Meta{ID: "1", Type: card.Basic}, Front: "Q1", Back: "A1"},
-		{Meta: card.Meta{ID: "2", Type: card.Basic}, Front: "Q2", Back: "A2"},
-		{Meta: card.Meta{ID: "3", Type: card.Basic}, Front: "Q3", Back: "A3"},
-		{Meta: card.Meta{ID: "4", Type: card.Basic}, Front: "Q4", Back: "A4"},
+	items := []deck.ReviewItem{
+		basicItem("1", "Q1", "A1"),
+		basicItem("2", "Q2", "A2"),
+		basicItem("3", "Q3", "A3"),
+		basicItem("4", "Q4", "A4"),
 	}
-	m := tui.NewReviewModel(cards, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc)
 
 	for _, key := range []rune{'1', '2', '3', '4'} {
 		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
@@ -154,5 +160,61 @@ func TestAllFourRatingKeysAccepted(t *testing.T) {
 	}
 	if m.CurrentIndex() != 4 {
 		t.Errorf("after rating 4 cards, index = %d, want 4", m.CurrentIndex())
+	}
+}
+
+// TestClozeQuestionHidesActiveGroup verifies that the question side of a cloze
+// card replaces the active group's deletions with a placeholder.
+func TestClozeQuestionHidesActiveGroup(t *testing.T) {
+	items := []deck.ReviewItem{
+		clozeItem("1", "The {{c1::capital::city}} of France is {{c2::Paris}}.", "c1"),
+	}
+	m := tui.NewReviewModel(items, nil)
+	view := m.View()
+	if strings.Contains(view, "capital") {
+		t.Errorf("question should hide active group c1, got:\n%s", view)
+	}
+	if !strings.Contains(view, "city") {
+		t.Errorf("question should show hint placeholder containing 'city', got:\n%s", view)
+	}
+	if !strings.Contains(view, "Paris") {
+		t.Errorf("question should reveal inactive group c2, got:\n%s", view)
+	}
+}
+
+// TestClozeAnswerRevealsActiveGroup verifies that the answer side of a cloze
+// card reveals all deletions including the active group.
+func TestClozeAnswerRevealsActiveGroup(t *testing.T) {
+	items := []deck.ReviewItem{
+		clozeItem("1", "The {{c1::capital::city}} of France is {{c2::Paris}}.", "c1"),
+	}
+	m := tui.NewReviewModel(items, nil)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = asReview(updated)
+	view := m.View()
+	if !strings.Contains(view, "capital") {
+		t.Errorf("answer should reveal active group c1, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Paris") {
+		t.Errorf("answer should reveal inactive group c2, got:\n%s", view)
+	}
+	if strings.Contains(view, "city") {
+		t.Errorf("answer should not show placeholder hint, got:\n%s", view)
+	}
+}
+
+// TestClozeNoHintShowsEllipsis checks that a cloze marker without a hint
+// renders as [...] on the question side.
+func TestClozeNoHintShowsEllipsis(t *testing.T) {
+	items := []deck.ReviewItem{
+		clozeItem("1", "The answer is {{c1::42}}.", "c1"),
+	}
+	m := tui.NewReviewModel(items, nil)
+	view := m.View()
+	if strings.Contains(view, "42") {
+		t.Errorf("question should hide answer 42, got:\n%s", view)
+	}
+	if !strings.Contains(view, "...") {
+		t.Errorf("question should show placeholder containing '...', got:\n%s", view)
 	}
 }

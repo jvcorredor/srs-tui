@@ -10,6 +10,13 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/card"
 )
 
+// ReviewItem represents a single unit of review: a card and, for cloze cards,
+// the specific deletion group being reviewed. Basic cards have an empty ClozeGroup.
+type ReviewItem struct {
+	Card       *card.Card
+	ClozeGroup string
+}
+
 // Discover returns the absolute paths of every immediate subdirectory inside
 // root. Only directories are returned; regular files are ignored. Symlinks to
 // directories are followed.
@@ -33,10 +40,11 @@ func Discover(root string) ([]string, error) {
 }
 
 // BuildQueue walks deckDir recursively, parses every .md file into a Card,
-// and returns the collected cards in random order. Files that cannot be
-// parsed as cards or that lack frontmatter are skipped.
-func BuildQueue(deckDir string) ([]*card.Card, error) {
-	var cards []*card.Card
+// and returns review items in random order. Basic cards produce a single item;
+// cloze cards produce one item per unique cloze group found in the body.
+// Files that cannot be parsed as cards or that lack frontmatter are skipped.
+func BuildQueue(deckDir string) ([]ReviewItem, error) {
+	var items []ReviewItem
 	err := filepath.WalkDir(deckDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -54,14 +62,26 @@ func BuildQueue(deckDir string) ([]*card.Card, error) {
 		if c == nil {
 			return nil
 		}
-		cards = append(cards, c)
+		if c.Type == card.Cloze {
+			groups := card.ExtractClozeGroups(c.Body)
+			if len(groups) == 0 {
+				// No cloze markers found; enqueue as a single item.
+				items = append(items, ReviewItem{Card: c})
+			} else {
+				for _, g := range groups {
+					items = append(items, ReviewItem{Card: c, ClozeGroup: g})
+				}
+			}
+		} else {
+			items = append(items, ReviewItem{Card: c})
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	rand.Shuffle(len(cards), func(i, j int) {
-		cards[i], cards[j] = cards[j], cards[i]
+	rand.Shuffle(len(items), func(i, j int) {
+		items[i], items[j] = items[j], items[i]
 	})
-	return cards, nil
+	return items, nil
 }
