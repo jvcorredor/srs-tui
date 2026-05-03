@@ -75,3 +75,25 @@ func TestDecksRootExpandsTilde(t *testing.T) {
 		t.Errorf("DecksRoot(\"~/my-decks\") = %q, want %q", got, want)
 	}
 }
+
+func TestStateHomeUsesXDGStateHome(t *testing.T) {
+	custom := filepath.Join(t.TempDir(), "xdg-state")
+	os.Setenv("XDG_STATE_HOME", custom)
+	defer os.Unsetenv("XDG_STATE_HOME")
+
+	got := paths.StateHome()
+	if got != custom {
+		t.Errorf("StateHome() = %q, want %q", got, custom)
+	}
+}
+
+func TestStateHomeFallsBackToDefault(t *testing.T) {
+	os.Unsetenv("XDG_STATE_HOME")
+	home, _ := os.UserHomeDir()
+	want := filepath.Join(home, ".local", "state")
+
+	got := paths.StateHome()
+	if got != want {
+		t.Errorf("StateHome() = %q, want %q", got, want)
+	}
+}
