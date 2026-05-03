@@ -174,3 +174,174 @@ func TestMakeRateFuncAssignsID(t *testing.T) {
 		t.Error("card should have ID assigned after first rating")
 	}
 }
+
+func TestRunInitWritesDefaultConfig(t *testing.T) {
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	err := cli.RunInit(configDir, dataDir, false, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("RunInit() error: %v", err)
+	}
+
+	configPath := filepath.Join(configDir, "srs", "config.toml")
+	b, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("reading config.toml: %v", err)
+	}
+
+	content := string(b)
+	if !strings.Contains(content, "decks_root") {
+		t.Error("config template missing decks_root")
+	}
+	if !strings.Contains(content, "new_per_day") {
+		t.Error("config template missing new_per_day")
+	}
+	if !strings.Contains(content, "command") {
+		t.Error("config template missing editor command")
+	}
+	if !strings.Contains(content, "style") {
+		t.Error("config template missing render style")
+	}
+}
+
+func TestRunInitCreatesDecksRoot(t *testing.T) {
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	err := cli.RunInit(configDir, dataDir, false, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("RunInit() error: %v", err)
+	}
+
+	decksRoot := filepath.Join(dataDir, "srs", "decks")
+	info, err := os.Stat(decksRoot)
+	if err != nil {
+		t.Fatalf("stat decks_root: %v", err)
+	}
+	if !info.IsDir() {
+		t.Errorf("decks_root %q is not a directory", decksRoot)
+	}
+}
+
+func TestRunInitRefusesOverwriteWithoutForce(t *testing.T) {
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	if err := cli.RunInit(configDir, dataDir, false, &stdout, &stderr); err != nil {
+		t.Fatalf("first RunInit() error: %v", err)
+	}
+
+	var stdout2, stderr2 bytes.Buffer
+	err := cli.RunInit(configDir, dataDir, false, &stdout2, &stderr2)
+	if err == nil {
+		t.Fatal("expected error when config already exists without --force")
+	}
+
+	if !strings.Contains(stderr2.String(), "already exists") {
+		t.Errorf("stderr = %q, want mention of already exists", stderr2.String())
+	}
+}
+
+func TestRunInitOverwritesWithForce(t *testing.T) {
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	if err := cli.RunInit(configDir, dataDir, false, &stdout, &stderr); err != nil {
+		t.Fatalf("first RunInit() error: %v", err)
+	}
+
+	configPath := filepath.Join(configDir, "srs", "config.toml")
+	original, _ := os.ReadFile(configPath)
+
+	os.WriteFile(configPath, append(original, []byte("# extra\n")...), 0o644)
+
+	var stdout2, stderr2 bytes.Buffer
+	if err := cli.RunInit(configDir, dataDir, true, &stdout2, &stderr2); err != nil {
+		t.Fatalf("RunInit with force: %v", err)
+	}
+
+	after, _ := os.ReadFile(configPath)
+	if strings.Contains(string(after), "# extra") {
+		t.Error("force should overwrite with default template, but old content remains")
+	}
+}
+
+func TestRunInitPrintsSuccessSummary(t *testing.T) {
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	if err := cli.RunInit(configDir, dataDir, false, &stdout, &stderr); err != nil {
+		t.Fatalf("RunInit() error: %v", err)
+	}
+
+	out := stdout.String()
+	configPath := filepath.Join(configDir, "srs", "config.toml")
+	if !strings.Contains(out, configPath) {
+		t.Errorf("stdout missing config path %q: got %q", configPath, out)
+	}
+	decksRoot := filepath.Join(dataDir, "srs", "decks")
+	if !strings.Contains(out, decksRoot) {
+		t.Errorf("stdout missing decks_root %q: got %q", decksRoot, out)
+	}
+	if stderr.Len() > 0 {
+		t.Errorf("unexpected stderr output: %q", stderr.String())
+	}
+}
+
+func TestRunInitIdempotentWithForce(t *testing.T) {
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	var stdout1, stderr1 bytes.Buffer
+	if err := cli.RunInit(configDir, dataDir, false, &stdout1, &stderr1); err != nil {
+		t.Fatalf("first RunInit(): %v", err)
+	}
+
+	firstConfig, _ := os.ReadFile(filepath.Join(configDir, "srs", "config.toml"))
+
+	var stdout2, stderr2 bytes.Buffer
+	if err := cli.RunInit(configDir, dataDir, true, &stdout2, &stderr2); err != nil {
+		t.Fatalf("second RunInit() with force: %v", err)
+	}
+
+	secondConfig, _ := os.ReadFile(filepath.Join(configDir, "srs", "config.toml"))
+
+	if string(firstConfig) != string(secondConfig) {
+		t.Error("config content differs between first and second run with --force")
+	}
+}
+
+func TestInitSubcommandCreatesFiles(t *testing.T) {
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+	os.Setenv("XDG_CONFIG_HOME", configDir)
+	os.Setenv("XDG_DATA_HOME", dataDir)
+	defer os.Unsetenv("XDG_CONFIG_HOME")
+	defer os.Unsetenv("XDG_DATA_HOME")
+
+	buf := new(bytes.Buffer)
+	cli.SetOutput(buf)
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"init"})
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init command failed: %v", err)
+	}
+
+	configPath := filepath.Join(configDir, "srs", "config.toml")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Error("config.toml not created")
+	}
+	decksRoot := filepath.Join(dataDir, "srs", "decks")
+	if _, err := os.Stat(decksRoot); os.IsNotExist(err) {
+		t.Error("decks_root directory not created")
+	}
+}

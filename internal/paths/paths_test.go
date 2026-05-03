@@ -87,6 +87,28 @@ func TestStateHomeUsesXDGStateHome(t *testing.T) {
 	}
 }
 
+func TestConfigHomeUsesXDGConfigHome(t *testing.T) {
+	custom := filepath.Join(t.TempDir(), "xdg-config")
+	os.Setenv("XDG_CONFIG_HOME", custom)
+	defer os.Unsetenv("XDG_CONFIG_HOME")
+
+	got := paths.ConfigHome()
+	if got != custom {
+		t.Errorf("ConfigHome() = %q, want %q", got, custom)
+	}
+}
+
+func TestConfigHomeFallsBackToDefault(t *testing.T) {
+	os.Unsetenv("XDG_CONFIG_HOME")
+	home, _ := os.UserHomeDir()
+	want := filepath.Join(home, ".config")
+
+	got := paths.ConfigHome()
+	if got != want {
+		t.Errorf("ConfigHome() = %q, want %q", got, want)
+	}
+}
+
 func TestStateHomeFallsBackToDefault(t *testing.T) {
 	os.Unsetenv("XDG_STATE_HOME")
 	home, _ := os.UserHomeDir()
