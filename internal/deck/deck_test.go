@@ -36,10 +36,18 @@ func writeBasicCard(t *testing.T, dir, id, front, back string) {
 // subdirectories and ignores regular files.
 func TestDiscoverDecks(t *testing.T) {
 	root := t.TempDir()
-	os.MkdirAll(filepath.Join(root, "french"), 0o755)
-	os.MkdirAll(filepath.Join(root, "golang"), 0o755)
-	os.MkdirAll(filepath.Join(root, "golang", "basics"), 0o755)
-	os.WriteFile(filepath.Join(root, "random.txt"), []byte("not a deck"), 0o644)
+	if err := os.MkdirAll(filepath.Join(root, "french"), 0o755); err != nil {
+		t.Fatalf("mkdir french: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "golang"), 0o755); err != nil {
+		t.Fatalf("mkdir golang: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "golang", "basics"), 0o755); err != nil {
+		t.Fatalf("mkdir golang/basics: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "random.txt"), []byte("not a deck"), 0o644); err != nil {
+		t.Fatalf("write random.txt: %v", err)
+	}
 
 	got, err := deck.Discover(root)
 	if err != nil {
@@ -68,8 +76,12 @@ func TestDiscoverDecks(t *testing.T) {
 func TestDiscoverFollowsSymlinks(t *testing.T) {
 	root := t.TempDir()
 	realDir := t.TempDir()
-	os.MkdirAll(filepath.Join(realDir, "cards"), 0o755)
-	os.Symlink(realDir, filepath.Join(root, "linked"))
+	if err := os.MkdirAll(filepath.Join(realDir, "cards"), 0o755); err != nil {
+		t.Fatalf("mkdir cards: %v", err)
+	}
+	if err := os.Symlink(realDir, filepath.Join(root, "linked")); err != nil {
+		t.Fatalf("symlink linked: %v", err)
+	}
 
 	got, err := deck.Discover(root)
 	if err != nil {
@@ -95,7 +107,9 @@ func TestDiscoverFollowsSymlinks(t *testing.T) {
 func TestQueueContainsAllCardsShuffled(t *testing.T) {
 	root := t.TempDir()
 	deckDir := filepath.Join(root, "mydeck")
-	os.MkdirAll(deckDir, 0o755)
+	if err := os.MkdirAll(deckDir, 0o755); err != nil {
+		t.Fatalf("mkdir deck: %v", err)
+	}
 
 	writeBasicCard(t, deckDir, "id-1", "Q1", "A1")
 	writeBasicCard(t, deckDir, "id-2", "Q2", "A2")
@@ -125,10 +139,14 @@ func TestQueueContainsAllCardsShuffled(t *testing.T) {
 func TestQueueSkipsNonCardFiles(t *testing.T) {
 	root := t.TempDir()
 	deckDir := filepath.Join(root, "mydeck")
-	os.MkdirAll(deckDir, 0o755)
+	if err := os.MkdirAll(deckDir, 0o755); err != nil {
+		t.Fatalf("mkdir deck: %v", err)
+	}
 
 	writeBasicCard(t, deckDir, "id-1", "Q1", "A1")
-	os.WriteFile(filepath.Join(deckDir, "readme.md"), []byte("# Deck\nNo frontmatter\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(deckDir, "readme.md"), []byte("# Deck\nNo frontmatter\n"), 0o644); err != nil {
+		t.Fatalf("write readme: %v", err)
+	}
 
 	q, err := deck.BuildQueue(deckDir)
 	if err != nil {
