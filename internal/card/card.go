@@ -18,17 +18,24 @@ const (
 )
 
 type Meta struct {
-	Schema  int      `yaml:"schema"`
-	ID      string   `yaml:"id"`
-	Type    Type     `yaml:"type"`
-	Created string   `yaml:"created"`
-	Tags    []string `yaml:"tags"`
+	Schema     int      `yaml:"schema"`
+	ID         string   `yaml:"id"`
+	Type       Type     `yaml:"type"`
+	Created    string   `yaml:"created"`
+	Tags       []string `yaml:"tags"`
+	State      string   `yaml:"state,omitempty"`
+	Due        string   `yaml:"due,omitempty"`
+	Stability  float64  `yaml:"stability,omitempty"`
+	Difficulty float64  `yaml:"difficulty,omitempty"`
+	Reps       int      `yaml:"reps,omitempty"`
+	Lapses     int      `yaml:"lapses,omitempty"`
 }
 
 type Card struct {
 	Meta
-	Front string
-	Back  string
+	Front    string
+	Back     string
+	FilePath string
 }
 
 var frontHeading = regexp.MustCompile(`(?m)^## Front\s*$`)
@@ -42,6 +49,9 @@ func ParseFile(path string) (*Card, error) {
 	c, err := Parse(data)
 	if err != nil {
 		return nil, fmt.Errorf("card: %s: %w", path, err)
+	}
+	if c != nil {
+		c.FilePath = path
 	}
 	return c, nil
 }

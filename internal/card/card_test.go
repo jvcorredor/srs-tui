@@ -84,6 +84,48 @@ func TestParseFile(t *testing.T) {
 	}
 }
 
+func TestRoundTripFSRSFields(t *testing.T) {
+	c := &card.Card{
+		Meta: card.Meta{
+			Schema:     1,
+			ID:         "01923f44-5a06-7d2e-8c9f-1b2d3e4f5a6b",
+			Type:       card.Basic,
+			Created:    "2026-01-15T10:30:00Z",
+			State:      "review",
+			Due:        "2026-02-15T10:30:00Z",
+			Stability:  12.5,
+			Difficulty: 5.2,
+			Reps:       4,
+			Lapses:     1,
+		},
+		Front: "Q\n",
+		Back:  "A\n",
+	}
+	serialized := c.Serialize()
+	parsed, err := card.Parse(serialized)
+	if err != nil {
+		t.Fatalf("Parse(roundtrip) error: %v", err)
+	}
+	if parsed.State != c.State {
+		t.Errorf("roundtrip State = %q, want %q", parsed.State, c.State)
+	}
+	if parsed.Due != c.Due {
+		t.Errorf("roundtrip Due = %q, want %q", parsed.Due, c.Due)
+	}
+	if parsed.Stability != c.Stability {
+		t.Errorf("roundtrip Stability = %v, want %v", parsed.Stability, c.Stability)
+	}
+	if parsed.Difficulty != c.Difficulty {
+		t.Errorf("roundtrip Difficulty = %v, want %v", parsed.Difficulty, c.Difficulty)
+	}
+	if parsed.Reps != c.Reps {
+		t.Errorf("roundtrip Reps = %d, want %d", parsed.Reps, c.Reps)
+	}
+	if parsed.Lapses != c.Lapses {
+		t.Errorf("roundtrip Lapses = %d, want %d", parsed.Lapses, c.Lapses)
+	}
+}
+
 func TestRoundTripBasicCard(t *testing.T) {
 	original, err := os.ReadFile("testdata/basic.md")
 	if err != nil {
