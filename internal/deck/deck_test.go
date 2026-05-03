@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/jvcorredor/srs-tui/internal/card"
 	"github.com/jvcorredor/srs-tui/internal/deck"
+	"github.com/jvcorredor/srs-tui/internal/fsrs"
 )
 
 // writeBasicCard creates a minimal valid card file in dir named id+".md".
@@ -22,6 +24,31 @@ func writeBasicCard(t *testing.T, dir, id, front, back string) {
 			ID:      id,
 			Type:    card.Basic,
 			Created: "2026-01-01T00:00:00Z",
+		},
+		Front: front + "\n",
+		Back:  back + "\n",
+	}
+	err := os.WriteFile(filepath.Join(dir, id+".md"), c.Serialize(), 0o644)
+	if err != nil {
+		t.Fatalf("write card: %v", err)
+	}
+}
+
+// writeBasicCardWithState creates a basic card file with FSRS scheduling state.
+func writeBasicCardWithState(t *testing.T, dir, id, front, back string, state fsrs.CardState) {
+	t.Helper()
+	c := &card.Card{
+		Meta: card.Meta{
+			Schema:     1,
+			ID:         id,
+			Type:       card.Basic,
+			Created:    "2026-01-01T00:00:00Z",
+			State:      string(state.State),
+			Due:        state.Due.Format(time.RFC3339),
+			Stability:  state.Stability,
+			Difficulty: state.Difficulty,
+			Reps:       state.Reps,
+			Lapses:     state.Lapses,
 		},
 		Front: front + "\n",
 		Back:  back + "\n",
@@ -218,5 +245,41 @@ func TestQueueEnumeratesClozeGroups(t *testing.T) {
 	}
 	if _, ok := items["cloze-1/c2"]; !ok {
 		t.Errorf("missing cloze-1/c2 in queue")
+	}
+}
+
+// TestDueCountCountsNewAndDueCards verifies that DueCount returns the number
+// of review items (cards or cloze groups) that are new or whose due time has
+// passed. Cards that are not yet due are excluded.
+func TestDueCountCountsNewAndDueCards(t *testing.T) {
+	root := t.TempDir()
+	deckDir := filepath.Join(root, "mydeck")
+	if err := os.MkdirAll(deckDir, 0o755); err != nil {
+		t.Fatalf("mkdir deck: %v", err)
+	}
+
+	now := time.Now()
+
+	writeBasicCardWithState(t, deckDir, "new-card", "Q1", "A1", fsrs.CardState{
+		State: fsrs.StateNew,
+		Due:   time.Time{},
+	})
+	writeBasicCardWithState(t, deckDir, "due-card", "Q2", "A2", fsrs.CardState{
+		State:     fsrs.StateReview,
+		Due:       now.Add(-1 * time.Hour),
+		Stability: 10,
+	})
+	writeBasicCardWithState(t, deckDir, "future-card", "Q3", "A3", fsrs.CardState{
+		State:     fsrs.StateReview,
+		Due:       now.Add(24 * time.Hour),
+		Stability: 10,
+	})
+
+	count, err := deck.DueCount(deckDir, now)
+	if err != nil {
+		t.Fatalf("DueCount() error: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("DueCount = %d, want 2 (new + due, excluding future)", count)
 	}
 }

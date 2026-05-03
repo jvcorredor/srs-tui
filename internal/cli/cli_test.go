@@ -98,27 +98,35 @@ func TestVersionCommandRejectsUnknownFormat(t *testing.T) {
 }
 
 // TestExecuteReturnsZero verifies that Execute returns 0 when no subcommand
-// is given (the root command prints help and exits successfully).
+// is given (the root command launches the deck picker).
 func TestExecuteReturnsZero(t *testing.T) {
 	cli.SetOutput(io.Discard)
+	fakePickerRun := func(decksRoot string) error { return nil }
+	cli.SetPickerRun(fakePickerRun)
 	code := cli.Execute()
 	if code != 0 {
 		t.Errorf("Execute() = %d, want 0", code)
 	}
 }
 
-// TestReviewCommandRequiresDeckArg checks that review fails when the deck
-// argument is missing.
-func TestReviewCommandRequiresDeckArg(t *testing.T) {
-	buf := new(bytes.Buffer)
-	cli.SetOutput(buf)
+// TestReviewCommandWithoutDeckLaunchesPicker verifies that review with no
+// deck argument launches the picker instead of failing.
+func TestReviewCommandWithoutDeckLaunchesPicker(t *testing.T) {
+	cli.SetOutput(io.Discard)
+	var pickerCalledWith string
+	cli.SetPickerRun(func(decksRoot string) error {
+		pickerCalledWith = decksRoot
+		return nil
+	})
 	cmd := cli.NewRootCmd()
 	cmd.SetArgs([]string{"review"})
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
+	cmd.SetOut(io.Discard)
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when deck arg missing")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pickerCalledWith == "" {
+		t.Error("picker should have been called with decks root")
 	}
 }
 

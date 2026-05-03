@@ -6,8 +6,10 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/jvcorredor/srs-tui/internal/card"
+	"github.com/jvcorredor/srs-tui/internal/fsrs"
 )
 
 // ReviewItem represents a single unit of review: a card and, for cloze cards,
@@ -84,4 +86,75 @@ func BuildQueue(deckDir string) ([]ReviewItem, error) {
 		items[i], items[j] = items[j], items[i]
 	})
 	return items, nil
+}
+
+// DueCount returns the number of review items in the deck that are due for
+// review at the given time. An item is due if its FSRS state is "new" or if
+// its scheduled due time is at or before now. Cloze cards are counted per
+// group (each group is an independent review item).
+func DueCount(deckDir string, now time.Time) (int, error) {
+	var count int
+	err := filepath.WalkDir(deckDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if filepath.Ext(path) != ".md" {
+			return nil
+		}
+		c, err := card.ParseFile(path)
+		if err != nil {
+			return err
+		}
+		if c == nil {
+			return nil
+		}
+		if c.Type == card.Cloze {
+			groups := card.ExtractClozeGroups(c.Body)
+			if len(groups) == 0 {
+				if isItemDue(c.Meta, "", now) {
+					count++
+				}
+			} else {
+				for _, g := range groups {
+					if isItemDue(c.Meta, g, now) {
+						count++
+					}
+				}
+			}
+		} else {
+			if isItemDue(c.Meta, "", now) {
+				count++
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// isItemDue reports whether a review item is due at the given time.
+// For cloze cards, group is the active cloze group identifier (e.g. "c1").
+// An item is due if its state is new or its due time is at or before now.
+func isItemDue(meta card.Meta, group string, now time.Time) bool {
+	if group != "" {
+		if cg, ok := meta.Clozes[group]; ok {
+			state := fsrs.NormalizeState(cg.State)
+			if state == fsrs.StateNew {
+				return true
+			}
+			due := fsrs.ParseTime(cg.Due)
+			return !due.IsZero() && !due.After(now)
+		}
+	}
+	state := fsrs.NormalizeState(meta.State)
+	if state == fsrs.StateNew {
+		return true
+	}
+	due := fsrs.ParseTime(meta.Due)
+	return !due.IsZero() && !due.After(now)
 }
