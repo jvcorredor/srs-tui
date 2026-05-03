@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -238,6 +239,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newReviewCmd())
 	root.AddCommand(newNewCmd())
 	root.AddCommand(newInitCmd())
+	root.AddCommand(newDecksCmd())
 	return root
 }
 
@@ -351,6 +353,40 @@ func newInitCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing config.toml")
 	return cmd
+}
+
+func newDecksCmd() *cobra.Command {
+	var decksRoot string
+	cmd := &cobra.Command{
+		Use:   "decks",
+		Short: "List deck names",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return RunDecks(paths.DecksRoot(decksRoot), cmd.OutOrStdout(), cmd.ErrOrStderr())
+		},
+		SilenceUsage: true,
+	}
+	cmd.Flags().StringVar(&decksRoot, "decks-root", "", "root directory for decks")
+	return cmd
+}
+
+// RunDecks discovers decks under decksRoot and prints their names sorted
+// alphabetically, one per line, to stdout. Diagnostics go to stderr.
+func RunDecks(decksRoot string, stdout, stderr io.Writer) error {
+	paths, err := deck.Discover(decksRoot)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "decks: %v\n", err)
+		return err
+	}
+	names := make([]string, len(paths))
+	for i, p := range paths {
+		names[i] = filepath.Base(p)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		_, _ = fmt.Fprintln(stdout, n)
+	}
+	return nil
 }
 
 // RunInit scaffolds the default config.toml in configDir and the decks directory
