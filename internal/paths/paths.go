@@ -13,6 +13,14 @@ func DataHome() string {
 	return filepath.Join(home, ".local", "share")
 }
 
+func StateHome() string {
+	if v := os.Getenv("XDG_STATE_HOME"); v != "" {
+		return v
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "state")
+}
+
 func DecksRoot(override string) string {
 	if override != "" {
 		return ExpandHome(override)
