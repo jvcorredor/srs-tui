@@ -1,3 +1,4 @@
+// Package paths_test contains unit tests for XDG path resolution.
 package paths_test
 
 import (
