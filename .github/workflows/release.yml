@@ -1,5 +1,8 @@
 name: Release
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
@@ -30,6 +33,6 @@ jobs:
         uses: go-semantic-release/action@v1
         with:
           allow-initial-development-versions: true
-          hooks: goreleaser release --clean
+          hooks: goreleaser
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
