@@ -44,7 +44,7 @@ func clozeItem(id, body, group string) deck.ReviewItem {
 // current card.
 func TestReviewFlipOnSpace(t *testing.T) {
 	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
-	m := tui.NewReviewModel(items, nil)
+	m := tui.NewReviewModel(items, nil, tui.WithRenderStyle("dark"))
 	if m.ShowingBack() {
 		t.Error("should start showing front")
 	}
@@ -57,7 +57,7 @@ func TestReviewFlipOnSpace(t *testing.T) {
 // TestReviewFlipOnEnter verifies that pressing Enter also reveals the back.
 func TestReviewFlipOnEnter(t *testing.T) {
 	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
-	m := tui.NewReviewModel(items, nil)
+	m := tui.NewReviewModel(items, nil, tui.WithRenderStyle("dark"))
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if !asReview(updated).ShowingBack() {
 		t.Error("enter should flip to back")
@@ -67,7 +67,7 @@ func TestReviewFlipOnEnter(t *testing.T) {
 // TestReviewQuitOnQ verifies that pressing 'q' returns a tea.Quit command.
 func TestReviewQuitOnQ(t *testing.T) {
 	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
-	m := tui.NewReviewModel(items, nil)
+	m := tui.NewReviewModel(items, nil, tui.WithRenderStyle("dark"))
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	if cmd == nil {
 		t.Error("q should trigger quit")
@@ -78,7 +78,7 @@ func TestReviewQuitOnQ(t *testing.T) {
 // session is complete (m.done == true).
 func TestReviewQuitOnQWhenDone(t *testing.T) {
 	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
-	m := tui.NewReviewModel(items, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc, tui.WithRenderStyle("dark"))
 	// Flip and rate the only card so the session ends.
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
@@ -123,7 +123,7 @@ func TestRatingKeyAdvancesCard(t *testing.T) {
 		basicItem("1", "Q1", "A1"),
 		basicItem("2", "Q2", "A2"),
 	}
-	m := tui.NewReviewModel(items, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc, tui.WithRenderStyle("dark"))
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
 
@@ -141,7 +141,7 @@ func TestRatingKeyAdvancesCard(t *testing.T) {
 // includes preview labels (Again, Hard, etc.) once the card is flipped.
 func TestRatingKeyShowsIntervalPreviewsOnBack(t *testing.T) {
 	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
-	m := tui.NewReviewModel(items, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc, tui.WithRenderStyle("dark"))
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
 
@@ -160,7 +160,7 @@ func TestAllFourRatingKeysAccepted(t *testing.T) {
 		basicItem("3", "Q3", "A3"),
 		basicItem("4", "Q4", "A4"),
 	}
-	m := tui.NewReviewModel(items, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc, tui.WithRenderStyle("dark"))
 
 	for _, key := range []rune{'1', '2', '3', '4'} {
 		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
@@ -179,7 +179,7 @@ func TestClozeQuestionHidesActiveGroup(t *testing.T) {
 	items := []deck.ReviewItem{
 		clozeItem("1", "The {{c1::capital::city}} of France is {{c2::Paris}}.", "c1"),
 	}
-	m := tui.NewReviewModel(items, nil)
+	m := tui.NewReviewModel(items, nil, tui.WithRenderStyle("dark"))
 	view := m.View()
 	if strings.Contains(view, "capital") {
 		t.Errorf("question should hide active group c1, got:\n%s", view)
@@ -198,7 +198,7 @@ func TestClozeAnswerRevealsActiveGroup(t *testing.T) {
 	items := []deck.ReviewItem{
 		clozeItem("1", "The {{c1::capital::city}} of France is {{c2::Paris}}.", "c1"),
 	}
-	m := tui.NewReviewModel(items, nil)
+	m := tui.NewReviewModel(items, nil, tui.WithRenderStyle("dark"))
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
 	view := m.View()
@@ -217,7 +217,7 @@ func TestClozeAnswerRevealsActiveGroup(t *testing.T) {
 // appropriate count in the session statistics.
 func TestRatingTracksCounts(t *testing.T) {
 	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
-	m := tui.NewReviewModel(items, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc, tui.WithRenderStyle("dark"))
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
@@ -240,7 +240,7 @@ func TestSummaryShowsTotalAndBreakdown(t *testing.T) {
 		basicItem("3", "Q3", "A3"),
 		basicItem("4", "Q4", "A4"),
 	}
-	m := tui.NewReviewModel(items, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc, tui.WithRenderStyle("dark"))
 	keys := []rune{'1', '2', '3', '4'}
 	for _, key := range keys {
 		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
@@ -261,7 +261,7 @@ func TestSummaryShowsTotalAndBreakdown(t *testing.T) {
 // emits tea.Quit, just like pressing q.
 func TestSummaryEnterQuits(t *testing.T) {
 	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
-	m := tui.NewReviewModel(items, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc, tui.WithRenderStyle("dark"))
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
@@ -276,7 +276,7 @@ func TestSummaryEnterQuits(t *testing.T) {
 // includes a Skipped count only when at least one card was skipped.
 func TestSummarySkippedCardsShownWhenNonZero(t *testing.T) {
 	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
-	m := tui.NewReviewModel(items, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc, tui.WithRenderStyle("dark"))
 	m.Skip()
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
@@ -292,7 +292,7 @@ func TestSummarySkippedCardsShownWhenNonZero(t *testing.T) {
 // the Skipped line when no cards were skipped.
 func TestSummarySkippedCardsHiddenWhenZero(t *testing.T) {
 	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
-	m := tui.NewReviewModel(items, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc, tui.WithRenderStyle("dark"))
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
@@ -310,7 +310,7 @@ func TestSummaryContainsStyledContent(t *testing.T) {
 		basicItem("1", "Q1", "A1"),
 		basicItem("2", "Q2", "A2"),
 	}
-	m := tui.NewReviewModel(items, fakeRateFunc)
+	m := tui.NewReviewModel(items, fakeRateFunc, tui.WithRenderStyle("dark"))
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = asReview(updated)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
@@ -804,12 +804,28 @@ func TestClozeNoHintShowsEllipsis(t *testing.T) {
 	items := []deck.ReviewItem{
 		clozeItem("1", "The answer is {{c1::42}}.", "c1"),
 	}
-	m := tui.NewReviewModel(items, nil)
+	m := tui.NewReviewModel(items, nil, tui.WithRenderStyle("dark"))
 	view := m.View()
 	if strings.Contains(view, "42") {
 		t.Errorf("question should hide answer 42, got:\n%s", view)
 	}
 	if !strings.Contains(view, "...") {
 		t.Errorf("question should show placeholder containing '...', got:\n%s", view)
+	}
+}
+
+func TestReviewModelUsesProvidedStyle(t *testing.T) {
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, nil, tui.WithRenderStyle("light"))
+	if m.RenderStyle() != "light" {
+		t.Errorf("RenderStyle() = %q, want %q", m.RenderStyle(), "light")
+	}
+}
+
+func TestReviewModelDefaultStyleIsAuto(t *testing.T) {
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, nil)
+	if m.RenderStyle() != "auto" {
+		t.Errorf("RenderStyle() = %q, want %q (default)", m.RenderStyle(), "auto")
 	}
 }
