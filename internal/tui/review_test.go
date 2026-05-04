@@ -203,6 +203,120 @@ func TestClozeAnswerRevealsActiveGroup(t *testing.T) {
 	}
 }
 
+// TestRatingTracksCounts verifies that rating a card increments the
+// appropriate count in the session statistics.
+func TestRatingTracksCounts(t *testing.T) {
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, fakeRateFunc)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = asReview(updated)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	m = asReview(updated)
+	stats := m.Stats()
+	if stats.RatingCounts[3] != 1 {
+		t.Errorf("after rating Good, RatingCounts[3] = %d, want 1", stats.RatingCounts[3])
+	}
+	if stats.TotalReviewed != 1 {
+		t.Errorf("after rating 1 card, TotalReviewed = %d, want 1", stats.TotalReviewed)
+	}
+}
+
+// TestSummaryShowsTotalAndBreakdown verifies that after exhausting the queue
+// the summary view includes the total cards reviewed and per-rating counts.
+func TestSummaryShowsTotalAndBreakdown(t *testing.T) {
+	items := []deck.ReviewItem{
+		basicItem("1", "Q1", "A1"),
+		basicItem("2", "Q2", "A2"),
+		basicItem("3", "Q3", "A3"),
+		basicItem("4", "Q4", "A4"),
+	}
+	m := tui.NewReviewModel(items, fakeRateFunc)
+	keys := []rune{'1', '2', '3', '4'}
+	for _, key := range keys {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+		m = asReview(updated)
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+		m = asReview(updated)
+	}
+	view := m.View()
+	if !strings.Contains(view, "4") {
+		t.Errorf("summary should show total 4 cards reviewed, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Again") || !strings.Contains(view, "Hard") || !strings.Contains(view, "Good") || !strings.Contains(view, "Easy") {
+		t.Errorf("summary should show all four rating labels, got:\n%s", view)
+	}
+}
+
+// TestSummaryEnterQuits verifies that pressing Enter on the summary screen
+// emits tea.Quit, just like pressing q.
+func TestSummaryEnterQuits(t *testing.T) {
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, fakeRateFunc)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = asReview(updated)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	m = asReview(updated)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Error("enter on summary screen should trigger quit")
+	}
+}
+
+// TestSummarySkippedCardsShownWhenNonZero verifies that the summary view
+// includes a Skipped count only when at least one card was skipped.
+func TestSummarySkippedCardsShownWhenNonZero(t *testing.T) {
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, fakeRateFunc)
+	m.Skip()
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = asReview(updated)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	m = asReview(updated)
+	view := m.View()
+	if !strings.Contains(view, "Skipped") {
+		t.Errorf("summary should show Skipped count when non-zero, got:\n%s", view)
+	}
+}
+
+// TestSummarySkippedCardsHiddenWhenZero verifies that the summary view omits
+// the Skipped line when no cards were skipped.
+func TestSummarySkippedCardsHiddenWhenZero(t *testing.T) {
+	items := []deck.ReviewItem{basicItem("1", "Q", "A")}
+	m := tui.NewReviewModel(items, fakeRateFunc)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = asReview(updated)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	m = asReview(updated)
+	view := m.View()
+	if strings.Contains(view, "Skipped") {
+		t.Errorf("summary should not show Skipped when count is zero, got:\n%s", view)
+	}
+}
+
+// TestSummaryContainsStyledContent verifies that the summary view includes
+// the key content (total, rating labels, exit hint) regardless of styling.
+func TestSummaryContainsStyledContent(t *testing.T) {
+	items := []deck.ReviewItem{
+		basicItem("1", "Q1", "A1"),
+		basicItem("2", "Q2", "A2"),
+	}
+	m := tui.NewReviewModel(items, fakeRateFunc)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = asReview(updated)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	m = asReview(updated)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = asReview(updated)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+	m = asReview(updated)
+	view := m.View()
+	for _, want := range []string{"2", "Again", "Easy", "Enter"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("summary should contain %q, got:\n%s", want, view)
+		}
+	}
+}
+
 // TestClozeNoHintShowsEllipsis checks that a cloze marker without a hint
 // renders as [...] on the question side.
 func TestClozeNoHintShowsEllipsis(t *testing.T) {
