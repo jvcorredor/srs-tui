@@ -41,6 +41,7 @@ type ReviewModel struct {
 	showingHelp  bool
 	quitConfirm  bool
 	renderer     *glamour.TermRenderer
+	renderStyle  string
 	rateFunc     RateFunc
 	previews     []fsrs.IntervalPreview
 	done         bool
@@ -85,6 +86,15 @@ func WithUndoFunc(fn UndoFunc) modelOption {
 	return func(m *ReviewModel) { m.undoFunc = fn }
 }
 
+// WithRenderStyle sets the Glamour style used to render card bodies.
+func WithRenderStyle(style string) modelOption {
+	return func(m *ReviewModel) {
+		if style != "" {
+			m.renderStyle = style
+		}
+	}
+}
+
 // EditFinishedMsg is sent when the external editor finishes editing a card.
 type EditFinishedMsg struct {
 	Path string
@@ -93,12 +103,12 @@ type EditFinishedMsg struct {
 
 // NewReviewModel creates a ReviewModel for the given review items. The
 // rateFunc is invoked each time the user presses a rating key (1–4) while
-// the back side is visible.
+// the back side is visible. Optional model options configure editor, undo,
+// and render style.
 func NewReviewModel(items []deck.ReviewItem, rateFunc RateFunc, opts ...modelOption) ReviewModel {
-	r, _ := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"))
 	m := ReviewModel{
 		items:        items,
-		renderer:     r,
+		renderStyle:  "auto",
 		rateFunc:     rateFunc,
 		ratingCounts: make(map[int]int),
 	}
@@ -111,6 +121,8 @@ func NewReviewModel(items []deck.ReviewItem, rateFunc RateFunc, opts ...modelOpt
 	if m.cardReadFunc == nil {
 		m.cardReadFunc = card.ParseFile
 	}
+	r, _ := glamour.NewTermRenderer(glamour.WithStandardStyle(m.renderStyle))
+	m.renderer = r
 	return m
 }
 
@@ -129,6 +141,11 @@ func EditorExecCmd(path string) tea.Cmd {
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return EditFinishedMsg{Path: path, Err: err}
 	})
+}
+
+// RenderStyle returns the Glamour style name used to render card bodies.
+func (m ReviewModel) RenderStyle() string {
+	return m.renderStyle
 }
 
 // ShowingBack reports whether the answer side of the current card is visible.

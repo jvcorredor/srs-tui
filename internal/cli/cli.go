@@ -181,10 +181,24 @@ func MakeUndoFunc(s *store.Store) tui.UndoFunc {
 
 // defaultReviewRun builds the review queue for deckDir, opens the interactive
 // Bubble Tea review session, and persists ratings via MakeRateFunc.
-func defaultReviewRun(deckDir string) error {
-	cfg, _ := config.Load(paths.ConfigHome())
+func loadConfig() (*config.Config, error) {
+	cfg, warnings, err := config.Load(paths.ConfigHome())
+	if err != nil {
+		return nil, err
+	}
 	if cfg == nil {
 		cfg = config.Defaults()
+	}
+	for _, w := range warnings {
+		fmt.Fprintln(os.Stderr, w)
+	}
+	return cfg, nil
+}
+
+func defaultReviewRun(deckDir string) error {
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
 	}
 
 	now := time.Now()
@@ -207,6 +221,7 @@ func defaultReviewRun(deckDir string) error {
 	m := tui.NewReviewModel(items, rateFunc,
 		tui.WithEditorCmd(tui.EditorExecCmd),
 		tui.WithUndoFunc(undoFunc),
+		tui.WithRenderStyle(cfg.Render.Style),
 	)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err = p.Run()
@@ -222,9 +237,9 @@ func defaultPickerRun(decksRoot string) error {
 		return fmt.Errorf("picker: %w", err)
 	}
 
-	cfg, _ := config.Load(paths.ConfigHome())
-	if cfg == nil {
-		cfg = config.Defaults()
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
 	}
 
 	now := time.Now()
@@ -255,6 +270,7 @@ func defaultPickerRun(decksRoot string) error {
 		return tui.NewReviewModel(items, rateFunc,
 			tui.WithEditorCmd(tui.EditorExecCmd),
 			tui.WithUndoFunc(undoFunc),
+			tui.WithRenderStyle(cfg.Render.Style),
 		), nil
 	}
 
@@ -478,6 +494,11 @@ func ExecuteWithArgs(args []string) int {
 	if err != nil {
 		var usageErr *UsageError
 		if errors.As(err, &usageErr) {
+			return 2
+		}
+		var fieldErr config.FieldError
+		if errors.As(err, &fieldErr) {
+			_, _ = fmt.Fprintln(os.Stderr, fieldErr.Error())
 			return 2
 		}
 		return 1

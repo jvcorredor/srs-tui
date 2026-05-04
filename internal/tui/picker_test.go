@@ -157,7 +157,7 @@ func TestPickerSelectTransitionsToReviewModel(t *testing.T) {
 	var modelReturned tea.Model
 	m := tui.NewPickerModel(decks, func(e tui.DeckEntry) (tea.Model, tea.Cmd) {
 		items := []deck.ReviewItem{pickerBasicItem("1", "Q", "A")}
-		review := tui.NewReviewModel(items, pickerFakeRateFunc)
+		review := tui.NewReviewModel(items, pickerFakeRateFunc, tui.WithRenderStyle("dark"))
 		modelReturned = review
 		return review, nil
 	})
