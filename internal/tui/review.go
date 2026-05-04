@@ -18,6 +18,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/jvcorredor/srs-tui/internal/card"
 	"github.com/jvcorredor/srs-tui/internal/deck"
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
@@ -31,13 +32,15 @@ type RateFunc func(item *deck.ReviewItem, rating int, now time.Time) (fsrs.CardS
 // It manages a deck of review items, tracks which side is visible, and
 // coordinates with a RateFunc to schedule cards after each rating.
 type ReviewModel struct {
-	items       []deck.ReviewItem
-	index       int
-	showingBack bool
-	renderer    *glamour.TermRenderer
-	rateFunc    RateFunc
-	previews    []fsrs.IntervalPreview
-	done        bool
+	items        []deck.ReviewItem
+	index        int
+	showingBack  bool
+	renderer     *glamour.TermRenderer
+	rateFunc     RateFunc
+	previews     []fsrs.IntervalPreview
+	done         bool
+	ratingCounts map[int]int
+	skippedCount int
 }
 
 // NewReviewModel creates a ReviewModel for the given review items. The
@@ -46,9 +49,10 @@ type ReviewModel struct {
 func NewReviewModel(items []deck.ReviewItem, rateFunc RateFunc) ReviewModel {
 	r, _ := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"))
 	return ReviewModel{
-		items:    items,
-		renderer: r,
-		rateFunc: rateFunc,
+		items:        items,
+		renderer:     r,
+		rateFunc:     rateFunc,
+		ratingCounts: make(map[int]int),
 	}
 }
 
@@ -60,6 +64,28 @@ func (m ReviewModel) ShowingBack() bool {
 // CurrentIndex returns the position of the card currently being reviewed.
 func (m ReviewModel) CurrentIndex() int {
 	return m.index
+}
+
+// SessionStats holds in-memory counts for a review session.
+type SessionStats struct {
+	RatingCounts  map[int]int
+	SkippedCount  int
+	TotalReviewed int
+}
+
+// Stats returns a snapshot of the session statistics.
+func (m ReviewModel) Stats() SessionStats {
+	return SessionStats{
+		RatingCounts:  m.ratingCounts,
+		SkippedCount:  m.skippedCount,
+		TotalReviewed: m.index,
+	}
+}
+
+// Skip increments the skipped-card counter. It is called when the user
+// defers the current card without rating it.
+func (m *ReviewModel) Skip() {
+	m.skippedCount++
 }
 
 // Init implements tea.Model.
@@ -81,6 +107,9 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if m.done {
+			if msg.Type == tea.KeyEnter {
+				return m, tea.Quit
+			}
 			return m, nil
 		}
 		switch msg.Type {
@@ -102,6 +131,7 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				it := &m.items[m.index]
 				_, _, err := m.rateFunc(it, rating, time.Now())
 				if err == nil {
+					m.ratingCounts[rating]++
 					m.index++
 					m.showingBack = false
 					m.previews = nil
@@ -124,7 +154,7 @@ func (m ReviewModel) View() string {
 		return "No cards in this deck.\nPress q to quit."
 	}
 	if m.done {
-		return "Session complete!\nPress q to quit."
+		return m.renderSummary()
 	}
 	it := &m.items[m.index]
 	var content string
@@ -225,4 +255,25 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
+var (
+	summaryTitle = lipgloss.NewStyle().Bold(true).MarginBottom(1)
+	summaryTotal = lipgloss.NewStyle().Bold(true)
+	summaryLabel = lipgloss.NewStyle().Width(8)
+	summaryHint  = lipgloss.NewStyle().Faint(true).MarginTop(1)
+)
+
+func (m ReviewModel) renderSummary() string {
+	labels := map[int]string{1: "Again", 2: "Hard", 3: "Good", 4: "Easy"}
+	s := summaryTitle.Render("Session complete!")
+	s += summaryTotal.Render(fmt.Sprintf("Cards reviewed: %d", m.index)) + "\n"
+	for _, r := range []int{1, 2, 3, 4} {
+		s += summaryLabel.Render(fmt.Sprintf("  %s:", labels[r])) + fmt.Sprintf(" %d\n", m.ratingCounts[r])
+	}
+	if m.skippedCount > 0 {
+		s += summaryLabel.Render("  Skipped:") + fmt.Sprintf(" %d\n", m.skippedCount)
+	}
+	s += summaryHint.Render("Press q or Enter to quit.")
+	return s
 }
