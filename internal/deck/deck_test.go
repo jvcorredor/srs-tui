@@ -149,7 +149,8 @@ func TestDiscoverFollowsSymlinks(t *testing.T) {
 }
 
 // TestQueueContainsAllCardsShuffled confirms that BuildQueue finds every
-// card in the deck and returns them in a shuffled order.
+// card in the deck and returns them in a shuffled order when the new-card
+// budget is effectively unlimited.
 func TestQueueContainsAllCardsShuffled(t *testing.T) {
 	root := t.TempDir()
 	deckDir := filepath.Join(root, "mydeck")
@@ -161,7 +162,11 @@ func TestQueueContainsAllCardsShuffled(t *testing.T) {
 	writeBasicCard(t, deckDir, "id-2", "Q2", "A2")
 	writeBasicCard(t, deckDir, "id-3", "Q3", "A3")
 
-	q, err := deck.BuildQueue(deckDir)
+	q, err := deck.BuildQueue(deckDir, deck.QueueConfig{
+		NewPerDay: 20,
+		Now:       time.Now(),
+		NewCount:  func(_ time.Time) (int, error) { return 0, nil },
+	})
 	if err != nil {
 		t.Fatalf("BuildQueue() error: %v", err)
 	}
@@ -194,7 +199,11 @@ func TestQueueSkipsNonCardFiles(t *testing.T) {
 		t.Fatalf("write readme: %v", err)
 	}
 
-	q, err := deck.BuildQueue(deckDir)
+	q, err := deck.BuildQueue(deckDir, deck.QueueConfig{
+		NewPerDay: 20,
+		Now:       time.Now(),
+		NewCount:  func(_ time.Time) (int, error) { return 0, nil },
+	})
 	if err != nil {
 		t.Fatalf("BuildQueue() error: %v", err)
 	}
@@ -218,7 +227,11 @@ func TestQueueEnumeratesClozeGroups(t *testing.T) {
 	writeBasicCard(t, deckDir, "basic-1", "Q1", "A1")
 	writeClozeCard(t, deckDir, "cloze-1", "{{c1::A}} and {{c2::B}}", nil)
 
-	q, err := deck.BuildQueue(deckDir)
+	q, err := deck.BuildQueue(deckDir, deck.QueueConfig{
+		NewPerDay: 20,
+		Now:       time.Now(),
+		NewCount:  func(_ time.Time) (int, error) { return 0, nil },
+	})
 	if err != nil {
 		t.Fatalf("BuildQueue() error: %v", err)
 	}
@@ -283,5 +296,176 @@ func TestDueCountCountsNewAndDueCards(t *testing.T) {
 	}
 	if count != 2 {
 		t.Errorf("DueCount = %d, want 2 (new + due, excluding future)", count)
+	}
+}
+
+// TestQueueHonorsNewPerDayBudget verifies that BuildQueue limits new cards
+// to the remaining daily budget. If 15 new cards were already reviewed today
+// and new_per_day is 20, only 5 new cards enter the queue. Due review cards
+// are unaffected by the budget.
+func TestQueueHonorsNewPerDayBudget(t *testing.T) {
+	root := t.TempDir()
+	deckDir := filepath.Join(root, "mydeck")
+	if err := os.MkdirAll(deckDir, 0o755); err != nil {
+		t.Fatalf("mkdir deck: %v", err)
+	}
+
+	now := time.Now()
+
+	writeBasicCardWithState(t, deckDir, "new-1", "Q1", "A1", fsrs.CardState{
+		State: fsrs.StateNew,
+	})
+	writeBasicCardWithState(t, deckDir, "new-2", "Q2", "A2", fsrs.CardState{
+		State: fsrs.StateNew,
+	})
+	writeBasicCardWithState(t, deckDir, "new-3", "Q3", "A3", fsrs.CardState{
+		State: fsrs.StateNew,
+	})
+	writeBasicCardWithState(t, deckDir, "due-review", "Q4", "A4", fsrs.CardState{
+		State:     fsrs.StateReview,
+		Due:       now.Add(-1 * time.Hour),
+		Stability: 10,
+	})
+
+	q, err := deck.BuildQueue(deckDir, deck.QueueConfig{
+		NewPerDay: 20,
+		Now:       now,
+		NewCount:  func(_ time.Time) (int, error) { return 18, nil },
+	})
+	if err != nil {
+		t.Fatalf("BuildQueue() error: %v", err)
+	}
+
+	newCount := 0
+	reviewCount := 0
+	for _, it := range q {
+		state := fsrs.NormalizeState(it.Card.State)
+		if state == fsrs.StateNew {
+			newCount++
+		} else {
+			reviewCount++
+		}
+	}
+
+	if newCount != 2 {
+		t.Errorf("new cards in queue = %d, want 2 (budget 20 - 18 done = 2 remaining)", newCount)
+	}
+	if reviewCount != 1 {
+		t.Errorf("review cards in queue = %d, want 1 (reviews are unbounded)", reviewCount)
+	}
+}
+
+// TestQueueBudgetResetsAcrossMidnight verifies that the new-card budget
+// resets at midnight. When NewCount reports 0 for the new day (no new
+// cards reviewed yet), all new cards are admitted up to the full budget.
+func TestQueueBudgetResetsAcrossMidnight(t *testing.T) {
+	root := t.TempDir()
+	deckDir := filepath.Join(root, "mydeck")
+	if err := os.MkdirAll(deckDir, 0o755); err != nil {
+		t.Fatalf("mkdir deck: %v", err)
+	}
+
+	writeBasicCardWithState(t, deckDir, "new-1", "Q1", "A1", fsrs.CardState{
+		State: fsrs.StateNew,
+	})
+	writeBasicCardWithState(t, deckDir, "new-2", "Q2", "A2", fsrs.CardState{
+		State: fsrs.StateNew,
+	})
+
+	now := time.Now()
+
+	q, err := deck.BuildQueue(deckDir, deck.QueueConfig{
+		NewPerDay: 20,
+		Now:       now,
+		NewCount:  func(_ time.Time) (int, error) { return 0, nil },
+	})
+	if err != nil {
+		t.Fatalf("BuildQueue() error: %v", err)
+	}
+
+	newCount := 0
+	for _, it := range q {
+		if fsrs.NormalizeState(it.Card.State) == fsrs.StateNew {
+			newCount++
+		}
+	}
+	if newCount != 2 {
+		t.Errorf("new cards in queue after midnight = %d, want 2 (budget reset)", newCount)
+	}
+}
+
+// TestQueueZeroBudgetAdmitsNoNewCards verifies that setting new_per_day to
+// zero prevents any new cards from entering the queue, while due review
+// cards are still admitted.
+func TestQueueZeroBudgetAdmitsNoNewCards(t *testing.T) {
+	root := t.TempDir()
+	deckDir := filepath.Join(root, "mydeck")
+	if err := os.MkdirAll(deckDir, 0o755); err != nil {
+		t.Fatalf("mkdir deck: %v", err)
+	}
+
+	now := time.Now()
+
+	writeBasicCardWithState(t, deckDir, "new-1", "Q1", "A1", fsrs.CardState{
+		State: fsrs.StateNew,
+	})
+	writeBasicCardWithState(t, deckDir, "due-review", "Q2", "A2", fsrs.CardState{
+		State:     fsrs.StateReview,
+		Due:       now.Add(-1 * time.Hour),
+		Stability: 10,
+	})
+
+	q, err := deck.BuildQueue(deckDir, deck.QueueConfig{
+		NewPerDay: 0,
+		Now:       now,
+		NewCount:  func(_ time.Time) (int, error) { return 0, nil },
+	})
+	if err != nil {
+		t.Fatalf("BuildQueue() error: %v", err)
+	}
+
+	for _, it := range q {
+		if fsrs.NormalizeState(it.Card.State) == fsrs.StateNew {
+			t.Errorf("new card %q admitted with zero budget", it.Card.ID)
+		}
+	}
+	if len(q) != 1 {
+		t.Errorf("queue length = %d, want 1 (only due review card)", len(q))
+	}
+}
+
+// TestQueueBudgetLargerThanAvailableNewCards verifies that when the budget
+// exceeds the number of available new cards, all new cards are admitted.
+func TestQueueBudgetLargerThanAvailableNewCards(t *testing.T) {
+	root := t.TempDir()
+	deckDir := filepath.Join(root, "mydeck")
+	if err := os.MkdirAll(deckDir, 0o755); err != nil {
+		t.Fatalf("mkdir deck: %v", err)
+	}
+
+	writeBasicCardWithState(t, deckDir, "new-1", "Q1", "A1", fsrs.CardState{
+		State: fsrs.StateNew,
+	})
+	writeBasicCardWithState(t, deckDir, "new-2", "Q2", "A2", fsrs.CardState{
+		State: fsrs.StateNew,
+	})
+
+	q, err := deck.BuildQueue(deckDir, deck.QueueConfig{
+		NewPerDay: 100,
+		Now:       time.Now(),
+		NewCount:  func(_ time.Time) (int, error) { return 0, nil },
+	})
+	if err != nil {
+		t.Fatalf("BuildQueue() error: %v", err)
+	}
+
+	newCount := 0
+	for _, it := range q {
+		if fsrs.NormalizeState(it.Card.State) == fsrs.StateNew {
+			newCount++
+		}
+	}
+	if newCount != 2 {
+		t.Errorf("new cards in queue = %d, want 2 (all available new cards admitted)", newCount)
 	}
 }

@@ -168,14 +168,25 @@ func MakeRateFunc(s *store.Store) tui.RateFunc {
 // defaultReviewRun builds the review queue for deckDir, opens the interactive
 // Bubble Tea review session, and persists ratings via MakeRateFunc.
 func defaultReviewRun(deckDir string) error {
-	items, err := deck.BuildQueue(deckDir)
+	cfg, _ := config.Load(paths.ConfigHome())
+	if cfg == nil {
+		cfg = config.Defaults()
+	}
+
+	now := time.Now()
+	deckSlug := filepath.Base(deckDir)
+	stateDir := filepath.Join(paths.StateHome(), "srs")
+	s := store.NewStore(stateDir, deckSlug)
+
+	items, err := deck.BuildQueue(deckDir, deck.QueueConfig{
+		NewPerDay: cfg.Review.NewPerDay,
+		Now:       now,
+		NewCount:  s.NewCountToday,
+	})
 	if err != nil {
 		return fmt.Errorf("review: %w", err)
 	}
 
-	deckSlug := filepath.Base(deckDir)
-	stateDir := filepath.Join(paths.StateHome(), "srs")
-	s := store.NewStore(stateDir, deckSlug)
 	rateFunc := MakeRateFunc(s)
 
 	m := tui.NewReviewModel(items, rateFunc)
@@ -193,6 +204,11 @@ func defaultPickerRun(decksRoot string) error {
 		return fmt.Errorf("picker: %w", err)
 	}
 
+	cfg, _ := config.Load(paths.ConfigHome())
+	if cfg == nil {
+		cfg = config.Defaults()
+	}
+
 	now := time.Now()
 	var entries []tui.DeckEntry
 	for _, dp := range deckPaths {
@@ -206,12 +222,16 @@ func defaultPickerRun(decksRoot string) error {
 
 	stateDir := filepath.Join(paths.StateHome(), "srs")
 	onSelect := func(e tui.DeckEntry) (tea.Model, tea.Cmd) {
-		items, qErr := deck.BuildQueue(e.Path)
+		deckSlug := filepath.Base(e.Path)
+		s := store.NewStore(stateDir, deckSlug)
+		items, qErr := deck.BuildQueue(e.Path, deck.QueueConfig{
+			NewPerDay: cfg.Review.NewPerDay,
+			Now:       now,
+			NewCount:  s.NewCountToday,
+		})
 		if qErr != nil {
 			return nil, tea.Quit
 		}
-		deckSlug := filepath.Base(e.Path)
-		s := store.NewStore(stateDir, deckSlug)
 		rateFunc := MakeRateFunc(s)
 		return tui.NewReviewModel(items, rateFunc), nil
 	}
