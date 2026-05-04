@@ -96,7 +96,7 @@ func defaultEditorRun(file string) error {
 // card's Markdown file, and returns the next state together with interval
 // previews. For cloze cards, only the active group's state is updated.
 func MakeRateFunc(s *store.Store) tui.RateFunc {
-	return func(it *deck.ReviewItem, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
+	return func(it *deck.ReviewItem, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, store.LogEntry, error) {
 		var prevState fsrs.CardState
 		if it.Card.Type == card.Cloze && it.ClozeGroup != "" {
 			if g, ok := it.Card.Clozes[it.ClozeGroup]; ok {
@@ -122,7 +122,7 @@ func MakeRateFunc(s *store.Store) tui.RateFunc {
 
 		nextState, previews, err := fsrs.Rate(prevState, rating, now)
 		if err != nil {
-			return fsrs.CardState{}, nil, err
+			return fsrs.CardState{}, nil, store.LogEntry{}, err
 		}
 
 		store.EnsureID(it.Card)
@@ -158,10 +158,24 @@ func MakeRateFunc(s *store.Store) tui.RateFunc {
 		}
 
 		if err := s.Persist(entry, it.Card.FilePath, it.Card); err != nil {
-			return nextState, previews, fmt.Errorf("persist: %w", err)
+			return nextState, previews, entry, fmt.Errorf("persist: %w", err)
 		}
 
-		return nextState, previews, nil
+		return nextState, previews, entry, nil
+	}
+}
+
+// MakeUndoFunc builds a tui.UndoFunc that reverses the last rating by truncating
+// the JSONL log and rewriting the card file to its prior FSRS state.
+func MakeUndoFunc(s *store.Store) tui.UndoFunc {
+	return func(entry store.LogEntry, cardPath string, c *card.Card) error {
+		if err := s.TruncateLastLog(entry); err != nil {
+			return fmt.Errorf("undo: truncate log: %w", err)
+		}
+		if err := s.RewriteCard(cardPath, c); err != nil {
+			return fmt.Errorf("undo: rewrite card: %w", err)
+		}
+		return nil
 	}
 }
 
@@ -188,8 +202,12 @@ func defaultReviewRun(deckDir string) error {
 	}
 
 	rateFunc := MakeRateFunc(s)
+	undoFunc := MakeUndoFunc(s)
 
-	m := tui.NewReviewModel(items, rateFunc)
+	m := tui.NewReviewModel(items, rateFunc,
+		tui.WithEditorCmd(tui.EditorExecCmd),
+		tui.WithUndoFunc(undoFunc),
+	)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err = p.Run()
 	return err
@@ -233,7 +251,11 @@ func defaultPickerRun(decksRoot string) error {
 			return nil, tea.Quit
 		}
 		rateFunc := MakeRateFunc(s)
-		return tui.NewReviewModel(items, rateFunc), nil
+		undoFunc := MakeUndoFunc(s)
+		return tui.NewReviewModel(items, rateFunc,
+			tui.WithEditorCmd(tui.EditorExecCmd),
+			tui.WithUndoFunc(undoFunc),
+		), nil
 	}
 
 	m := tui.NewPickerModel(entries, onSelect)

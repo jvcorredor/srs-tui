@@ -144,6 +144,35 @@ func (s *Store) DeckSlug() string { return s.deckSlug }
 // LogPath returns the full path to the JSONL review log file.
 func (s *Store) LogPath() string { return s.logPath }
 
+// TruncateLastLog removes the last log entry matching entry from the JSONL
+// log file by truncating the file at the position where the matching line begins.
+func (s *Store) TruncateLastLog(entry LogEntry) error {
+	f, err := os.Open(s.logPath)
+	if err != nil {
+		return fmt.Errorf("store: truncate: open: %w", err)
+	}
+
+	var offset int64
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var e LogEntry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			continue
+		}
+		if e.TS.Equal(entry.TS) && e.CardID == entry.CardID && e.Rating == entry.Rating {
+			break
+		}
+		offset += int64(len(scanner.Bytes())) + 1
+	}
+	scanErr := scanner.Err()
+	_ = f.Close()
+	if scanErr != nil {
+		return fmt.Errorf("store: truncate: scan: %w", scanErr)
+	}
+
+	return os.Truncate(s.logPath, offset)
+}
+
 // NewCountToday counts log entries where the card was previously in the "new"
 // state and the entry timestamp falls on the same local-calendar day as now.
 // It reads the JSONL log file associated with this store's deck.
