@@ -1,18 +1,17 @@
-// Package config_test contains unit tests for the config loader.
 package config_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jvcorredor/srs-tui/internal/config"
 )
 
-// TestLoadReturnsDefaultsWhenFileAbsent confirms that Load returns the
-// built-in defaults when no config.toml exists.
 func TestLoadReturnsDefaultsWhenFileAbsent(t *testing.T) {
-	cfg, err := config.Load(t.TempDir())
+	cfg, warnings, err := config.Load(t.TempDir())
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -30,10 +29,21 @@ func TestLoadReturnsDefaultsWhenFileAbsent(t *testing.T) {
 	if cfg.Render.Style != defaults.Render.Style {
 		t.Errorf("Render.Style = %q, want %q", cfg.Render.Style, defaults.Render.Style)
 	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %v, want empty", warnings)
+	}
 }
 
-// TestLoadParsesV1KeysFromConfigToml verifies that every documented config
-// key is read correctly from a real TOML file.
+func TestLoadDefaultRenderStyleIsAuto(t *testing.T) {
+	cfg, _, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Render.Style != "auto" {
+		t.Errorf("Render.Style = %q, want %q", cfg.Render.Style, "auto")
+	}
+}
+
 func TestLoadParsesV1KeysFromConfigToml(t *testing.T) {
 	dir := t.TempDir()
 	srsDir := filepath.Join(dir, "srs")
@@ -57,7 +67,7 @@ style = "light"
 		t.Fatal(err)
 	}
 
-	cfg, err := config.Load(dir)
+	cfg, warnings, err := config.Load(dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -74,10 +84,11 @@ style = "light"
 	if cfg.Render.Style != "light" {
 		t.Errorf("Render.Style = %q, want %q", cfg.Render.Style, "light")
 	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %v, want empty", warnings)
+	}
 }
 
-// TestLoadPartialConfigKeepsDefaults checks that omitted sections fall back
-// to defaults rather than zero values.
 func TestLoadPartialConfigKeepsDefaults(t *testing.T) {
 	dir := t.TempDir()
 	srsDir := filepath.Join(dir, "srs")
@@ -92,7 +103,7 @@ new_per_day = 5
 		t.Fatal(err)
 	}
 
-	cfg, err := config.Load(dir)
+	cfg, _, err := config.Load(dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -109,8 +120,6 @@ new_per_day = 5
 	}
 }
 
-// TestLoadExpandsTildeInDecksRoot ensures that a leading "~" in decks_root
-// is expanded to the user's home directory.
 func TestLoadExpandsTildeInDecksRoot(t *testing.T) {
 	dir := t.TempDir()
 	srsDir := filepath.Join(dir, "srs")
@@ -125,7 +134,7 @@ decks_root = "~/my-decks"
 		t.Fatal(err)
 	}
 
-	cfg, err := config.Load(dir)
+	cfg, _, err := config.Load(dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -137,8 +146,6 @@ decks_root = "~/my-decks"
 	}
 }
 
-// TestLoadRejectsNegativeNewPerDay verifies that Load returns an error when
-// new_per_day is set to a negative value in the config file.
 func TestLoadRejectsNegativeNewPerDay(t *testing.T) {
 	dir := t.TempDir()
 	srsDir := filepath.Join(dir, "srs")
@@ -153,8 +160,121 @@ new_per_day = -5
 		t.Fatal(err)
 	}
 
-	_, err := config.Load(dir)
+	_, _, err := config.Load(dir)
 	if err == nil {
 		t.Fatal("Load() should return error for negative new_per_day")
+	}
+}
+
+func TestLoadTypeMismatchReturnsFieldError(t *testing.T) {
+	dir := t.TempDir()
+	srsDir := filepath.Join(dir, "srs")
+	if err := os.MkdirAll(srsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tomlContent := `[review]
+new_per_day = "not-a-number"
+`
+	if err := os.WriteFile(filepath.Join(srsDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load() should return error for type mismatch")
+	}
+
+	var fe config.FieldError
+	if !errors.As(err, &fe) {
+		t.Fatalf("error should be FieldError, got %T: %v", err, err)
+	}
+	if fe.Key != "review.new_per_day" {
+		t.Errorf("FieldError.Key = %q, want %q", fe.Key, "review.new_per_day")
+	}
+	if fe.File == "" {
+		t.Error("FieldError.File should not be empty")
+	}
+	if fe.Reason == "" {
+		t.Error("FieldError.Reason should not be empty")
+	}
+}
+
+func TestLoadUnknownKeyProducesWarning(t *testing.T) {
+	dir := t.TempDir()
+	srsDir := filepath.Join(dir, "srs")
+	if err := os.MkdirAll(srsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tomlContent := `[paths]
+decks_root = "/valid"
+
+[review]
+new_per_day = 10
+
+[typo]
+some_key = "oops"
+`
+	if err := os.WriteFile(filepath.Join(srsDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, warnings, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("Load() returned nil config for unknown keys")
+	}
+	if cfg.Paths.DecksRoot != "/valid" {
+		t.Errorf("Paths.DecksRoot = %q, want %q", cfg.Paths.DecksRoot, "/valid")
+	}
+
+	if len(warnings) == 0 {
+		t.Fatal("Load() returned no warnings for unknown keys")
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "typo.some_key") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("warnings = %v, want warning containing %q", warnings, "typo.some_key")
+	}
+}
+
+func TestLoadInvalidRenderStyleFallsBackToAuto(t *testing.T) {
+	dir := t.TempDir()
+	srsDir := filepath.Join(dir, "srs")
+	if err := os.MkdirAll(srsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tomlContent := `[render]
+style = "neon"
+`
+	if err := os.WriteFile(filepath.Join(srsDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, warnings, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Render.Style != "auto" {
+		t.Errorf("Render.Style = %q, want %q (fallback)", cfg.Render.Style, "auto")
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "render.style") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("warnings = %v, want warning containing %q", warnings, "render.style")
 	}
 }
