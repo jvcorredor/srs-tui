@@ -12,6 +12,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -22,11 +24,12 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/card"
 	"github.com/jvcorredor/srs-tui/internal/deck"
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
+	"github.com/jvcorredor/srs-tui/internal/store"
 )
 
 // RateFunc applies a user rating to a review item and returns the resulting
 // state, interval previews for all possible ratings, and any error.
-type RateFunc func(item *deck.ReviewItem, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error)
+type RateFunc func(item *deck.ReviewItem, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, store.LogEntry, error)
 
 // ReviewModel is a Bubble Tea model that drives a flash-card review session.
 // It manages a deck of review items, tracks which side is visible, and
@@ -35,25 +38,97 @@ type ReviewModel struct {
 	items        []deck.ReviewItem
 	index        int
 	showingBack  bool
+	showingHelp  bool
+	quitConfirm  bool
 	renderer     *glamour.TermRenderer
 	rateFunc     RateFunc
 	previews     []fsrs.IntervalPreview
 	done         bool
 	ratingCounts map[int]int
 	skippedCount int
+	editorCmd    EditorCmdFunc
+	cardReadFunc func(string) (*card.Card, error)
+	editErr      string
+	undoFunc     UndoFunc
+	undoable     *undoInfo
+}
+
+type undoInfo struct {
+	entry    store.LogEntry
+	cardPath string
+	card     *card.Card
+	rating   int
+}
+
+// EditorCmdFunc returns a tea.Cmd that opens the card at path in an editor.
+type EditorCmdFunc func(path string) tea.Cmd
+
+// UndoFunc reverses a persisted rating by truncating the log and rewriting
+// the card to its prior FSRS state.
+type UndoFunc func(entry store.LogEntry, cardPath string, c *card.Card) error
+
+type modelOption func(*ReviewModel)
+
+// WithEditorCmd sets the editor command function used when pressing 'e'.
+func WithEditorCmd(fn EditorCmdFunc) modelOption {
+	return func(m *ReviewModel) { m.editorCmd = fn }
+}
+
+// WithCardReadFunc sets the function used to re-read a card from disk after
+// the editor exits.
+func WithCardReadFunc(fn func(string) (*card.Card, error)) modelOption {
+	return func(m *ReviewModel) { m.cardReadFunc = fn }
+}
+
+// WithUndoFunc sets the function used to reverse the last persisted rating.
+func WithUndoFunc(fn UndoFunc) modelOption {
+	return func(m *ReviewModel) { m.undoFunc = fn }
+}
+
+// EditFinishedMsg is sent when the external editor finishes editing a card.
+type EditFinishedMsg struct {
+	Path string
+	Err  error
 }
 
 // NewReviewModel creates a ReviewModel for the given review items. The
 // rateFunc is invoked each time the user presses a rating key (1–4) while
 // the back side is visible.
-func NewReviewModel(items []deck.ReviewItem, rateFunc RateFunc) ReviewModel {
+func NewReviewModel(items []deck.ReviewItem, rateFunc RateFunc, opts ...modelOption) ReviewModel {
 	r, _ := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"))
-	return ReviewModel{
+	m := ReviewModel{
 		items:        items,
 		renderer:     r,
 		rateFunc:     rateFunc,
 		ratingCounts: make(map[int]int),
 	}
+	for _, opt := range opts {
+		opt(&m)
+	}
+	if m.editorCmd == nil {
+		m.editorCmd = EditorExecCmd
+	}
+	if m.cardReadFunc == nil {
+		m.cardReadFunc = card.ParseFile
+	}
+	return m
+}
+
+func findEditor() string {
+	if e := os.Getenv("EDITOR"); e != "" {
+		return e
+	}
+	return "vi"
+}
+
+// EditorExecCmd returns a tea.Cmd that opens the card at path in the system
+// editor, suspending the TUI while the editor runs.
+func EditorExecCmd(path string) tea.Cmd {
+	editor := findEditor()
+	c := exec.Command(editor, path)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return EditFinishedMsg{Path: path, Err: err}
+	})
 }
 
 // ShowingBack reports whether the answer side of the current card is visible.
@@ -103,8 +178,31 @@ func (m ReviewModel) Init() tea.Cmd {
 func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.showingHelp {
+			if msg.String() == "?" || msg.Type == tea.KeyEsc {
+				m.showingHelp = false
+			}
+			return m, nil
+		}
+		if m.quitConfirm {
+			switch msg.String() {
+			case "y":
+				return m, tea.Quit
+			case "n", "N":
+				m.quitConfirm = false
+			}
+			return m, nil
+		}
 		if msg.String() == "q" {
+			if m.showingBack && !m.done {
+				m.quitConfirm = true
+				return m, nil
+			}
 			return m, tea.Quit
+		}
+		if msg.String() == "?" {
+			m.showingHelp = true
+			return m, nil
 		}
 		if m.done {
 			if msg.Type == tea.KeyEnter {
@@ -129,9 +227,16 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.showingBack && m.rateFunc != nil && m.index < len(m.items) {
 				rating := int(msg.String()[0] - '0')
 				it := &m.items[m.index]
-				_, _, err := m.rateFunc(it, rating, time.Now())
+				prevCard := *it.Card
+				_, _, entry, err := m.rateFunc(it, rating, time.Now())
 				if err == nil {
 					m.ratingCounts[rating]++
+					m.undoable = &undoInfo{
+						entry:    entry,
+						cardPath: it.Card.FilePath,
+						card:     &prevCard,
+						rating:   rating,
+					}
 					m.index++
 					m.showingBack = false
 					m.previews = nil
@@ -141,7 +246,53 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		case "s":
+			if m.index < len(m.items) {
+				m.skippedCount++
+				m.items = append(m.items, m.items[m.index])
+				m.items = append(m.items[:m.index], m.items[m.index+1:]...)
+				m.showingBack = false
+				m.previews = nil
+			}
+			return m, nil
+		case "e":
+			if m.index < len(m.items) && m.items[m.index].Card.FilePath != "" {
+				path := m.items[m.index].Card.FilePath
+				return m, m.editorCmd(path)
+			}
+			return m, nil
+		case "u":
+			if m.undoable != nil && m.undoFunc != nil {
+				if err := m.undoFunc(m.undoable.entry, m.undoable.cardPath, m.undoable.card); err == nil {
+					m.ratingCounts[m.undoable.rating]--
+					m.index--
+					m.done = false
+					m.showingBack = false
+					m.previews = nil
+					m.items[m.index].Card = m.undoable.card
+					m.undoable = nil
+				}
+			}
+			return m, nil
 		}
+	}
+	switch msg := msg.(type) {
+	case EditFinishedMsg:
+		m.editErr = ""
+		if msg.Err != nil {
+			m.editErr = fmt.Sprintf("editor error: %v", msg.Err)
+			return m, nil
+		}
+		updated, err := m.cardReadFunc(msg.Path)
+		if err != nil {
+			m.editErr = fmt.Sprintf("error re-reading card: %v", err)
+			return m, nil
+		}
+		if updated != nil && m.index < len(m.items) {
+			m.items[m.index].Card = updated
+			m.editErr = ""
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -152,6 +303,12 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m ReviewModel) View() string {
 	if len(m.items) == 0 {
 		return "No cards in this deck.\nPress q to quit."
+	}
+	if m.showingHelp {
+		return renderHelpOverlay()
+	}
+	if m.quitConfirm {
+		return "Rating in progress - quit anyway? (y/N)"
 	}
 	if m.done {
 		return m.renderSummary()
@@ -169,6 +326,9 @@ func (m ReviewModel) View() string {
 	rendered, _ := m.renderer.Render(content)
 	if m.showingBack && len(m.previews) > 0 {
 		rendered += formatPreviews(m.previews)
+	}
+	if m.editErr != "" {
+		rendered += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(m.editErr) + "\n"
 	}
 	return rendered
 }
@@ -275,5 +435,19 @@ func (m ReviewModel) renderSummary() string {
 		s += summaryLabel.Render("  Skipped:") + fmt.Sprintf(" %d\n", m.skippedCount)
 	}
 	s += summaryHint.Render("Press q or Enter to quit.")
+	return s
+}
+
+var helpTitle = lipgloss.NewStyle().Bold(true).MarginBottom(1)
+
+func renderHelpOverlay() string {
+	s := helpTitle.Render("Keybindings")
+	s += "  space/enter  flip card\n"
+	s += "  1-4          rate (again/hard/good/easy)\n"
+	s += "  e            edit card\n"
+	s += "  u            undo last rating\n"
+	s += "  s            skip card\n"
+	s += "  ?            toggle help\n"
+	s += "  q            quit\n"
 	return s
 }

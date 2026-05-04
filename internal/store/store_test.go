@@ -358,3 +358,61 @@ func TestNewCountTodayReturnsZeroWhenNoLog(t *testing.T) {
 		t.Errorf("NewCountToday = %d, want 0", count)
 	}
 }
+
+// TestTruncateLastLogRemovesMatchingEntry verifies that TruncateLastLog
+// removes the last log entry matching the given entry and leaves earlier
+// entries intact.
+func TestTruncateLastLogRemovesMatchingEntry(t *testing.T) {
+	dir := t.TempDir()
+	s := store.NewStore(dir, "mydeck")
+
+	entry1 := store.LogEntry{
+		Schema: 1,
+		TS:     time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC),
+		CardID: "card-1",
+		Rating: 3,
+		Prev:   fsrs.CardState{State: fsrs.StateNew},
+		Next:   fsrs.CardState{State: fsrs.StateLearning},
+	}
+	entry2 := store.LogEntry{
+		Schema: 1,
+		TS:     time.Date(2026, 1, 1, 10, 1, 0, 0, time.UTC),
+		CardID: "card-2",
+		Rating: 4,
+		Prev:   fsrs.CardState{State: fsrs.StateNew},
+		Next:   fsrs.CardState{State: fsrs.StateReview},
+	}
+
+	if err := s.AppendLog(entry1); err != nil {
+		t.Fatalf("AppendLog entry1: %v", err)
+	}
+	if err := s.AppendLog(entry2); err != nil {
+		t.Fatalf("AppendLog entry2: %v", err)
+	}
+
+	if err := s.TruncateLastLog(entry2); err != nil {
+		t.Fatalf("TruncateLastLog: %v", err)
+	}
+
+	f, err := os.Open(filepath.Join(dir, "mydeck.jsonl"))
+	if err != nil {
+		t.Fatalf("open log: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	var remaining []store.LogEntry
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var e store.LogEntry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			continue
+		}
+		remaining = append(remaining, e)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("after truncating last entry, got %d entries, want 1", len(remaining))
+	}
+	if remaining[0].CardID != "card-1" {
+		t.Errorf("remaining entry should be card-1, got %s", remaining[0].CardID)
+	}
+}

@@ -170,7 +170,7 @@ func TestMakeRateFuncPersistsRating(t *testing.T) {
 	rateFunc := cli.MakeRateFunc(s)
 
 	now := time.Now()
-	nextState, previews, err := rateFunc(&deck.ReviewItem{Card: c}, 3, now)
+	nextState, previews, _, err := rateFunc(&deck.ReviewItem{Card: c}, 3, now)
 	if err != nil {
 		t.Fatalf("rateFunc() error: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestMakeRateFuncUpdatesOnlyActiveClozeGroup(t *testing.T) {
 
 	now := time.Now()
 	item := &deck.ReviewItem{Card: c, ClozeGroup: "c1"}
-	nextState, _, err := rateFunc(item, 3, now)
+	nextState, _, _, err := rateFunc(item, 3, now)
 	if err != nil {
 		t.Fatalf("rateFunc() error: %v", err)
 	}
@@ -533,7 +533,7 @@ func TestMakeRateFuncAssignsID(t *testing.T) {
 	s := store.NewStore(stateDir, "testdeck")
 	rateFunc := cli.MakeRateFunc(s)
 
-	_, _, err := rateFunc(&deck.ReviewItem{Card: c}, 3, time.Now())
+	_, _, _, err := rateFunc(&deck.ReviewItem{Card: c}, 3, time.Now())
 	if err != nil {
 		t.Fatalf("rateFunc() error: %v", err)
 	}

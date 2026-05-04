@@ -9,6 +9,7 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/card"
 	"github.com/jvcorredor/srs-tui/internal/deck"
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
+	"github.com/jvcorredor/srs-tui/internal/store"
 	"github.com/jvcorredor/srs-tui/internal/tui"
 )
 
@@ -20,7 +21,7 @@ func pickerBasicItem(id, front, back string) deck.ReviewItem {
 }
 
 // pickerFakeRateFunc is a stub RateFunc for picker tests.
-func pickerFakeRateFunc(item *deck.ReviewItem, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, error) {
+func pickerFakeRateFunc(item *deck.ReviewItem, rating int, now time.Time) (fsrs.CardState, []fsrs.IntervalPreview, store.LogEntry, error) {
 	next := fsrs.CardState{State: fsrs.StateLearning, Stability: 1.5}
 	previews := []fsrs.IntervalPreview{
 		{Rating: 1, State: fsrs.StateLearning, Interval: 1 * time.Minute},
@@ -28,7 +29,8 @@ func pickerFakeRateFunc(item *deck.ReviewItem, rating int, now time.Time) (fsrs.
 		{Rating: 3, State: fsrs.StateLearning, Interval: 10 * time.Minute},
 		{Rating: 4, State: fsrs.StateReview, Interval: 24 * time.Hour},
 	}
-	return next, previews, nil
+	entry := store.LogEntry{Schema: 1, TS: now, CardID: item.Card.ID, Rating: rating, Prev: fsrs.CardState{State: fsrs.StateNew}, Next: next}
+	return next, previews, entry, nil
 }
 
 // asPicker asserts that a tea.Model is a tui.PickerModel and returns it.
