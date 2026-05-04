@@ -14,6 +14,7 @@ import (
 
 	"github.com/jvcorredor/srs-tui/internal/card"
 	"github.com/jvcorredor/srs-tui/internal/cli"
+	"github.com/jvcorredor/srs-tui/internal/config"
 	"github.com/jvcorredor/srs-tui/internal/deck"
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
 	"github.com/jvcorredor/srs-tui/internal/store"
@@ -903,5 +904,27 @@ func TestDecksCommandEmptyRootPrintsNothing(t *testing.T) {
 
 	if stdout.String() != "" {
 		t.Errorf("output should be empty for empty root, got %q", stdout.String())
+	}
+}
+
+func TestConfigValidationErrorReturnsExitCode2(t *testing.T) {
+	cli.SetOutput(io.Discard)
+	cli.SetReviewRun(func(deckDir string) error {
+		return config.FieldError{File: "/test/config.toml", Key: "review.new_per_day", Reason: "incompatible types"}
+	})
+	code := cli.ExecuteWithArgs([]string{"review", "somedeck"})
+	if code != 2 {
+		t.Errorf("exit code = %d, want 2 for config validation error", code)
+	}
+}
+
+func TestConfigNegativeNewPerDayReturnsExitCode2(t *testing.T) {
+	cli.SetOutput(io.Discard)
+	cli.SetReviewRun(func(deckDir string) error {
+		return config.FieldError{File: "/test/config.toml", Key: "review.new_per_day", Reason: "must be non-negative, got -5"}
+	})
+	code := cli.ExecuteWithArgs([]string{"review", "somedeck"})
+	if code != 2 {
+		t.Errorf("exit code = %d, want 2 for negative new_per_day", code)
 	}
 }
