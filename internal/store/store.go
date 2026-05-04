@@ -4,6 +4,7 @@
 package store
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -142,3 +143,34 @@ func (s *Store) DeckSlug() string { return s.deckSlug }
 
 // LogPath returns the full path to the JSONL review log file.
 func (s *Store) LogPath() string { return s.logPath }
+
+// NewCountToday counts log entries where the card was previously in the "new"
+// state and the entry timestamp falls on the same local-calendar day as now.
+// It reads the JSONL log file associated with this store's deck.
+func (s *Store) NewCountToday(now time.Time) (int, error) {
+	f, err := os.Open(s.logPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	defer func() { _ = f.Close() }()
+
+	today := now.Local().Truncate(24 * time.Hour)
+	var count int
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var entry LogEntry
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+			continue
+		}
+		if entry.Prev.State != fsrs.StateNew {
+			continue
+		}
+		if entry.TS.Local().Truncate(24 * time.Hour).Equal(today) {
+			count++
+		}
+	}
+	return count, scanner.Err()
+}

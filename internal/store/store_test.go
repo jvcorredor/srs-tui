@@ -302,3 +302,59 @@ func TestEnsureIDNoOpWhenCardHasID(t *testing.T) {
 		t.Errorf("ID changed from %q to %q", "existing-id", c.ID)
 	}
 }
+
+// TestNewCountTodayCountsOnlyToday checks that NewCountToday only counts
+// log entries where prev.state == "new" and the timestamp falls on the same
+// local-calendar day as the supplied "now" parameter. Entries from previous
+// days and non-new entries are excluded.
+func TestNewCountTodayCountsOnlyToday(t *testing.T) {
+	dir := t.TempDir()
+	s := store.NewStore(dir, "mydeck")
+
+	today := time.Now().Local().Truncate(24 * time.Hour).Add(12 * time.Hour)
+	yesterday := today.Add(-24 * time.Hour)
+
+	newEntry := func(ts time.Time, prevState fsrs.State) store.LogEntry {
+		return store.LogEntry{
+			Schema: 1,
+			TS:     ts.UTC().Truncate(time.Millisecond),
+			CardID: "card-1",
+			Rating: 3,
+			Prev:   fsrs.CardState{State: prevState},
+			Next:   fsrs.CardState{State: fsrs.StateLearning},
+		}
+	}
+
+	if err := s.AppendLog(newEntry(yesterday, fsrs.StateNew)); err != nil {
+		t.Fatalf("append yesterday: %v", err)
+	}
+	if err := s.AppendLog(newEntry(today, fsrs.StateNew)); err != nil {
+		t.Fatalf("append today new: %v", err)
+	}
+	if err := s.AppendLog(newEntry(today, fsrs.StateReview)); err != nil {
+		t.Fatalf("append today review: %v", err)
+	}
+
+	count, err := s.NewCountToday(today)
+	if err != nil {
+		t.Fatalf("NewCountToday() error: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("NewCountToday = %d, want 1 (only today's new entries)", count)
+	}
+}
+
+// TestNewCountTodayReturnsZeroWhenNoLog ensures NewCountToday returns 0
+// without error when the log file does not exist.
+func TestNewCountTodayReturnsZeroWhenNoLog(t *testing.T) {
+	dir := t.TempDir()
+	s := store.NewStore(dir, "mydeck")
+
+	count, err := s.NewCountToday(time.Now())
+	if err != nil {
+		t.Fatalf("NewCountToday() error: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("NewCountToday = %d, want 0", count)
+	}
+}
