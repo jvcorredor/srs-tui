@@ -8,6 +8,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -78,6 +79,10 @@ func Load(configDir string) (*Config, error) {
 	}
 
 	cfg.Paths.DecksRoot = paths.ExpandHome(cfg.Paths.DecksRoot)
+
+	if cfg.Review.NewPerDay < 0 {
+		return nil, fmt.Errorf("config: review.new_per_day must be non-negative, got %d", cfg.Review.NewPerDay)
+	}
 
 	return cfg, nil
 }

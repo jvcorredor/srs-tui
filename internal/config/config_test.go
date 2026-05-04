@@ -136,3 +136,25 @@ decks_root = "~/my-decks"
 		t.Errorf("Paths.DecksRoot = %q, want %q", cfg.Paths.DecksRoot, want)
 	}
 }
+
+// TestLoadRejectsNegativeNewPerDay verifies that Load returns an error when
+// new_per_day is set to a negative value in the config file.
+func TestLoadRejectsNegativeNewPerDay(t *testing.T) {
+	dir := t.TempDir()
+	srsDir := filepath.Join(dir, "srs")
+	if err := os.MkdirAll(srsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tomlContent := `[review]
+new_per_day = -5
+`
+	if err := os.WriteFile(filepath.Join(srsDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load() should return error for negative new_per_day")
+	}
+}
