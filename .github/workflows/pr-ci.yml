@@ -16,7 +16,7 @@ jobs:
 
       - uses: extractions/setup-just@v2
 
-      - uses: golangci/golangci-lint-action@v7
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.1
 
