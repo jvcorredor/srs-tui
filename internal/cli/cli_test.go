@@ -928,3 +928,161 @@ func TestConfigNegativeNewPerDayReturnsExitCode2(t *testing.T) {
 		t.Errorf("exit code = %d, want 2 for negative new_per_day", code)
 	}
 }
+
+func TestDeckCreateCommandCreatesDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"deck", "create", "french", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deck create command failed: %v", err)
+	}
+
+	info, err := os.Stat(filepath.Join(tmpDir, "french"))
+	if err != nil {
+		t.Fatalf("stat created deck: %v", err)
+	}
+	if !info.IsDir() {
+		t.Error("created deck path is not a directory")
+	}
+}
+
+func TestDeckCreateCommandSlugifiesName(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"deck", "create", "My Spanish Verbs!", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deck create command failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(tmpDir, "my-spanish-verbs")); err != nil {
+		t.Fatalf("expected slugified deck dir 'my-spanish-verbs': %v", err)
+	}
+}
+
+func TestDeckCreateCommandPrintsCreatedName(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+
+	var stdout bytes.Buffer
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"deck", "create", "My Spanish Verbs!", "--decks-root", tmpDir})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deck create command failed: %v", err)
+	}
+
+	if got := strings.TrimRight(stdout.String(), "\n"); got != "my-spanish-verbs" {
+		t.Errorf("output = %q, want %q", got, "my-spanish-verbs")
+	}
+}
+
+func TestDeckCreateCommandErrorsIfDirectoryExists(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, "french"), 0o755); err != nil {
+		t.Fatalf("mkdir french: %v", err)
+	}
+	cli.SetOutput(io.Discard)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"deck", "create", "french", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected error when deck directory already exists")
+	}
+
+	code := cli.ExecuteWithArgs([]string{"deck", "create", "french", "--decks-root", tmpDir})
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 for runtime error (deck exists)", code)
+	}
+}
+
+func TestDeckCreateCommandMissingArgReturnsExitCode2(t *testing.T) {
+	cli.SetOutput(io.Discard)
+	code := cli.ExecuteWithArgs([]string{"deck", "create"})
+	if code != 2 {
+		t.Errorf("exit code = %d, want 2 for usage error", code)
+	}
+}
+
+func TestDeckCreateCommandEmptySlugReturnsExitCode2(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+	code := cli.ExecuteWithArgs([]string{"deck", "create", "!!!", "--decks-root", tmpDir})
+	if code != 2 {
+		t.Errorf("exit code = %d, want 2 for unusable deck name", code)
+	}
+}
+
+func TestDeckListCommandSortsAlphabetically(t *testing.T) {
+	tmpDir := t.TempDir()
+	for _, name := range []string{"zoo", "alpha", "med"} {
+		if err := os.MkdirAll(filepath.Join(tmpDir, name), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", name, err)
+		}
+	}
+
+	var stdout bytes.Buffer
+	cli.SetOutput(io.Discard)
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"deck", "list", "--decks-root", tmpDir})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deck list command failed: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimRight(stdout.String(), "\n"), "\n")
+	want := []string{"alpha", "med", "zoo"}
+	if len(lines) != len(want) {
+		t.Fatalf("lines = %v, want %v", lines, want)
+	}
+	for i, got := range lines {
+		if got != want[i] {
+			t.Errorf("lines[%d] = %q, want %q", i, got, want[i])
+		}
+	}
+}
+
+func TestDeckListMatchesDecksAlias(t *testing.T) {
+	tmpDir := t.TempDir()
+	for _, name := range []string{"french", "golang", "med"} {
+		if err := os.MkdirAll(filepath.Join(tmpDir, name), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", name, err)
+		}
+	}
+	cli.SetOutput(io.Discard)
+
+	run := func(args ...string) string {
+		var stdout bytes.Buffer
+		cmd := cli.NewRootCmd()
+		cmd.SetArgs(args)
+		cmd.SetOut(&stdout)
+		cmd.SetErr(io.Discard)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("%v command failed: %v", args, err)
+		}
+		return stdout.String()
+	}
+
+	deckList := run("deck", "list", "--decks-root", tmpDir)
+	decks := run("decks", "--decks-root", tmpDir)
+	if deckList != decks {
+		t.Errorf("deck list output %q differs from decks alias output %q", deckList, decks)
+	}
+}
