@@ -24,6 +24,16 @@ import (
 // noBuildInfo returns nil to simulate a binary built without debug info.
 func noBuildInfo() (*debug.BuildInfo, bool) { return nil, false }
 
+// mkDeck creates an empty deck directory named name under root. "srs new" now
+// requires the deck to already exist, so card-creation tests stage their decks
+// up front with this helper.
+func mkDeck(t *testing.T, root, name string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
+		t.Fatalf("mkdir deck %s: %v", name, err)
+	}
+}
+
 // TestVersionCommandPrintsVersion checks that the version subcommand prints the
 // version string, commit hash, and build date in text format.
 func TestVersionCommandPrintsVersion(t *testing.T) {
@@ -308,6 +318,7 @@ func TestMakeRateFuncUpdatesOnlyActiveClozeGroup(t *testing.T) {
 // command creates a Markdown card file with the correct frontmatter fields.
 func TestNewCommandCreatesCardFileWithPrefilledFrontmatter(t *testing.T) {
 	tmpDir := t.TempDir()
+	mkDeck(t, tmpDir, "french")
 	cli.SetOutput(io.Discard)
 	cli.SetEditorRun(func(_ string) error { return nil })
 
@@ -345,6 +356,7 @@ func TestNewCommandCreatesCardFileWithPrefilledFrontmatter(t *testing.T) {
 // produces a card with type "cloze" and a cloze-deletion syntax hint.
 func TestNewCommandWithClozeFlagCreatesClozeCard(t *testing.T) {
 	tmpDir := t.TempDir()
+	mkDeck(t, tmpDir, "med")
 	cli.SetOutput(io.Discard)
 	cli.SetEditorRun(func(_ string) error { return nil })
 
@@ -378,6 +390,7 @@ func TestNewCommandWithClozeFlagCreatesClozeCard(t *testing.T) {
 // target card file already exists.
 func TestNewCommandRefusesOverwrite(t *testing.T) {
 	tmpDir := t.TempDir()
+	mkDeck(t, tmpDir, "french")
 	cli.SetOutput(io.Discard)
 	cli.SetEditorRun(func(_ string) error { return nil })
 
@@ -404,6 +417,7 @@ func TestNewCommandRefusesOverwrite(t *testing.T) {
 // runner with the path of the newly created card file.
 func TestNewCommandLaunchesEditor(t *testing.T) {
 	tmpDir := t.TempDir()
+	mkDeck(t, tmpDir, "french")
 	var editorCalledWith string
 	cli.SetOutput(io.Discard)
 	cli.SetEditorRun(func(file string) error {
@@ -425,33 +439,107 @@ func TestNewCommandLaunchesEditor(t *testing.T) {
 	}
 }
 
-// TestNewCommandCreatesDeckDirectoryIfMissing verifies that the new command
-// creates the deck directory when it does not already exist.
-func TestNewCommandCreatesDeckDirectoryIfMissing(t *testing.T) {
+// TestNewCommandSlugifiesDeckAndCardNames verifies that the new command
+// slugifies both the deck argument (to match an existing deck directory) and
+// the card argument (into the card filename).
+func TestNewCommandSlugifiesDeckAndCardNames(t *testing.T) {
 	tmpDir := t.TempDir()
+	mkDeck(t, tmpDir, "spanish-verbs")
 	cli.SetOutput(io.Discard)
 	cli.SetEditorRun(func(_ string) error { return nil })
 
 	cmd := cli.NewRootCmd()
-	cmd.SetArgs([]string{"new", "brand-new-deck", "card1", "--decks-root", tmpDir})
+	cmd.SetArgs([]string{"new", "Spanish Verbs", "To Be (ser)", "--decks-root", tmpDir})
 	cmd.SetOut(io.Discard)
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("new command failed: %v", err)
 	}
 
-	deckDir := filepath.Join(tmpDir, "brand-new-deck")
-	info, err := os.Stat(deckDir)
-	if err != nil {
-		t.Fatalf("deck directory not created: %v", err)
+	cardPath := filepath.Join(tmpDir, "spanish-verbs", "to-be-ser.md")
+	if _, err := os.Stat(cardPath); err != nil {
+		t.Fatalf("expected slugified card at %s: %v", cardPath, err)
 	}
-	if !info.IsDir() {
-		t.Error("deck path is not a directory")
+}
+
+// TestNewCommandUnknownDeckSuggestsClosest verifies that a mistyped deck
+// argument does not create a directory and instead returns a plain runtime
+// error (exit code 1) suggesting the closest existing deck.
+func TestNewCommandUnknownDeckSuggestsClosest(t *testing.T) {
+	tmpDir := t.TempDir()
+	mkDeck(t, tmpDir, "spanish")
+	cli.SetOutput(io.Discard)
+	cli.SetEditorRun(func(_ string) error { return nil })
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"new", "spnaish", "hola", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown deck")
+	}
+	if !strings.Contains(err.Error(), `Did you mean "spanish"?`) {
+		t.Errorf("error should suggest closest deck, got: %v", err)
 	}
 
-	cardPath := filepath.Join(deckDir, "card1.md")
-	if _, err := os.Stat(cardPath); err != nil {
-		t.Fatalf("card file not created: %v", err)
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "spnaish")); !os.IsNotExist(statErr) {
+		t.Error("unknown deck must not be created on disk")
+	}
+
+	code := cli.ExecuteWithArgs([]string{"new", "spnaish", "hola", "--decks-root", tmpDir})
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 for unknown-deck runtime error", code)
+	}
+}
+
+// TestNewCommandUnknownDeckListsExistingDecks verifies that an unknown deck
+// argument with no close match lists the decks that do exist.
+func TestNewCommandUnknownDeckListsExistingDecks(t *testing.T) {
+	tmpDir := t.TempDir()
+	mkDeck(t, tmpDir, "french")
+	mkDeck(t, tmpDir, "german")
+	cli.SetOutput(io.Discard)
+	cli.SetEditorRun(func(_ string) error { return nil })
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"new", "xylophone", "note", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown deck")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "Did you mean") {
+		t.Errorf("a distant deck name should not produce a did-you-mean suggestion: %v", err)
+	}
+	if !strings.Contains(msg, "french") || !strings.Contains(msg, "german") {
+		t.Errorf("error should list existing decks, got: %v", err)
+	}
+}
+
+// TestNewCommandUnknownDeckWithNoDecksSuggestsDeckCreate verifies that, when no
+// decks exist at all, the unknown-deck error points the user at the
+// "srs deck create" command.
+func TestNewCommandUnknownDeckWithNoDecksSuggestsDeckCreate(t *testing.T) {
+	tmpDir := t.TempDir()
+	cli.SetOutput(io.Discard)
+	cli.SetEditorRun(func(_ string) error { return nil })
+
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"new", "spanish", "hola", "--decks-root", tmpDir})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when no decks exist")
+	}
+	if !strings.Contains(err.Error(), "srs deck create") {
+		t.Errorf("error should point to 'srs deck create', got: %v", err)
 	}
 }
 
@@ -459,6 +547,7 @@ func TestNewCommandCreatesDeckDirectoryIfMissing(t *testing.T) {
 // leave temporary files in the deck directory after creating a card.
 func TestNewCommandAtomicWriteNoTmpArtifacts(t *testing.T) {
 	tmpDir := t.TempDir()
+	mkDeck(t, tmpDir, "french")
 	cli.SetOutput(io.Discard)
 	cli.SetEditorRun(func(_ string) error { return nil })
 
@@ -496,6 +585,7 @@ func TestNewCommandUsageErrorReturnsExitCode2(t *testing.T) {
 // exit code 1 when the new command encounters a runtime error (file exists).
 func TestNewCommandRuntimeErrorReturnsExitCode1(t *testing.T) {
 	tmpDir := t.TempDir()
+	mkDeck(t, tmpDir, "french")
 	cli.SetOutput(io.Discard)
 	cli.SetEditorRun(func(_ string) error { return nil })
 
