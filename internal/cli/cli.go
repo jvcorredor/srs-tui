@@ -1,5 +1,5 @@
 // Package cli implements the command-line interface for srs-tui.
-// It defines the cobra commands (review, new, version, init) and
+// It defines the cobra commands (review, new, deck, version, init) and
 // the glue functions that wire the terminal UI, card storage, and
 // scheduling logic together.
 package cli
@@ -23,6 +23,7 @@ import (
 	"github.com/jvcorredor/srs-tui/internal/deck"
 	"github.com/jvcorredor/srs-tui/internal/fsrs"
 	"github.com/jvcorredor/srs-tui/internal/paths"
+	"github.com/jvcorredor/srs-tui/internal/slug"
 	"github.com/jvcorredor/srs-tui/internal/store"
 	"github.com/jvcorredor/srs-tui/internal/tui"
 	"github.com/jvcorredor/srs-tui/internal/version"
@@ -297,6 +298,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newReviewCmd())
 	root.AddCommand(newNewCmd())
 	root.AddCommand(newInitCmd())
+	root.AddCommand(newDeckCmd())
 	root.AddCommand(newDecksCmd())
 	return root
 }
@@ -413,10 +415,52 @@ func newInitCmd() *cobra.Command {
 	return cmd
 }
 
-func newDecksCmd() *cobra.Command {
+// newDeckCmd creates the "deck" parent command grouping deck-management
+// subcommands (create, list).
+func newDeckCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "deck",
+		Short: "Manage decks",
+	}
+	cmd.AddCommand(newDeckCreateCmd())
+	cmd.AddCommand(newDeckListCmd("list"))
+	return cmd
+}
+
+// newDeckCreateCmd creates the "deck create <name>" command, which creates a
+// new deck directory under the decks root using the slugified name.
+func newDeckCreateCmd() *cobra.Command {
 	var decksRoot string
 	cmd := &cobra.Command{
-		Use:   "decks",
+		Use:   "create <name>",
+		Short: "Create a new deck directory",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return &UsageError{msg: fmt.Sprintf("accepts 1 arg(s), received %d", len(args))}
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return RunDeckCreate(paths.DecksRoot(decksRoot), args[0], cmd.OutOrStdout())
+		},
+		SilenceUsage: true,
+	}
+	cmd.Flags().StringVar(&decksRoot, "decks-root", "", "root directory for decks")
+	return cmd
+}
+
+// newDecksCmd creates the top-level "decks" command, kept as a
+// backward-compatible alias for "deck list".
+func newDecksCmd() *cobra.Command {
+	return newDeckListCmd("decks")
+}
+
+// newDeckListCmd builds a deck-listing command under the given name. It backs
+// both "deck list" and the backward-compatible top-level "decks" command.
+func newDeckListCmd(use string) *cobra.Command {
+	var decksRoot string
+	cmd := &cobra.Command{
+		Use:   use,
 		Short: "List deck names",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -426,6 +470,29 @@ func newDecksCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&decksRoot, "decks-root", "", "root directory for decks")
 	return cmd
+}
+
+// RunDeckCreate creates a new deck directory under decksRoot. The deck name is
+// normalized into a filesystem-safe identifier via slug.Slugify. It returns a
+// UsageError if name has no usable characters, and a runtime error if the deck
+// directory already exists. On success it prints the created deck name.
+func RunDeckCreate(decksRoot, name string, stdout io.Writer) error {
+	deckName := slug.Slugify(name)
+	if deckName == "" {
+		return &UsageError{msg: fmt.Sprintf("deck create: %q has no usable characters for a deck name", name)}
+	}
+
+	deckDir := filepath.Join(decksRoot, deckName)
+	if _, err := os.Stat(deckDir); err == nil {
+		return fmt.Errorf("deck create: %s already exists", deckDir)
+	}
+
+	if err := os.MkdirAll(deckDir, 0o755); err != nil {
+		return fmt.Errorf("deck create: %w", err)
+	}
+
+	_, _ = fmt.Fprintln(stdout, deckName)
+	return nil
 }
 
 // RunDecks discovers decks under decksRoot and prints their names sorted
