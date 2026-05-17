@@ -1,0 +1,26 @@
+# Astro build output
+dist/
+
+# Astro generated types
+.astro/
+
+# Yarn PnP project — no node_modules directory is used
+node_modules/
+
+# Yarn 4 — Zero-Install: the cache, releases, plugins and SDKs are committed
+# so a fresh clone can build offline. Everything else under .yarn/ is local.
+.yarn/*
+!.yarn/cache
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Environment files
+.env
+.env.production
+
+# Logs and OS cruft
+*.log
+.DS_Store
