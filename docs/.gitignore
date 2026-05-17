@@ -7,10 +7,9 @@ dist/
 # Yarn PnP project — no node_modules directory is used
 node_modules/
 
-# Yarn 4 — Zero-Install: the cache, releases, plugins and SDKs are committed
-# so a fresh clone can build offline. Everything else under .yarn/ is local.
+# Yarn: the plugins and editor SDKs are committed; the dependency cache and
+# other local state are not (CI restores the cache with actions/cache).
 .yarn/*
-!.yarn/cache
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases

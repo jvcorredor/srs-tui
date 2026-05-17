@@ -39,8 +39,17 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Install dependencies (offline — Zero-Install)
-        run: yarn install --immutable --immutable-cache
+      - name: Cache Yarn dependencies
+        uses: actions/cache@v4
+        with:
+          # Path is relative to the repository root, not the job working dir.
+          path: docs/.yarn/cache
+          key: yarn-${{ runner.os }}-${{ hashFiles('docs/yarn.lock') }}
+          restore-keys: |
+            yarn-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: yarn install --immutable
 
       - name: Build site
         run: yarn build
