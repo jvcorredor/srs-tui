@@ -1,0 +1,56 @@
+---
+title: srs
+description: A spaced-repetition TUI built around the FSRS algorithm and Markdown card files.
+template: splash
+hero:
+  tagline: Review your knowledge from the terminal — powered by the FSRS scheduling algorithm and plain Markdown card files.
+  actions:
+    - text: Install srs
+      link: /srs-tui/install/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/jvcorredor/srs-tui
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why srs?
+
+**srs** is a spaced-repetition terminal application. Your cards are ordinary
+Markdown files you own and version-control, and reviews are scheduled by
+[FSRS](https://github.com/open-spaced-repetition) — a modern, evidence-based
+algorithm that adapts to how well you actually remember each card.
+
+<CardGrid stagger>
+	<Card title="Plain Markdown cards" icon="document">
+		Cards live in Markdown files on disk. Edit them in any editor, diff
+		them, and keep them under version control.
+	</Card>
+	<Card title="FSRS scheduling" icon="random">
+		The Free Spaced Repetition Scheduler picks the optimal moment to
+		review each card so you study less and remember more.
+	</Card>
+	<Card title="Terminal-native" icon="laptop">
+		A fast, keyboard-driven TUI. No browser, no account, no sync server —
+		just your files and your terminal.
+	</Card>
+	<Card title="Open source" icon="open-book">
+		Written in Go and MIT-licensed. Read the source, file issues, and
+		contribute on GitHub.
+	</Card>
+</CardGrid>
+
+## Next steps
+
+<CardGrid>
+	<Card title="Install" icon="rocket">
+		Get `srs` onto your machine — see the [installation guide](/srs-tui/install/).
+	</Card>
+	<Card title="Quick start" icon="open-book">
+		Write your first card and run a review session in the
+		[quick-start guide](/srs-tui/quick-start/).
+	</Card>
+</CardGrid>
