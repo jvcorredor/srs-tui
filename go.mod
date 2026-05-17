@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/google/uuid v1.6.0
-	github.com/open-spaced-repetition/go-fsrs/v4 v4.0.0-20260503034430-457418c9bf73
+	github.com/open-spaced-repetition/go-fsrs/v4 v4.0.0-rc1
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
 )
