@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -322,13 +323,18 @@ func newReviewCmd() *cobra.Command {
 }
 
 // newNewCmd creates the "new <deck> <name>" command for adding cards.
+//
+// The command only ever adds cards to decks that already exist: it slugifies
+// both arguments and matches the deck against existing deck directories.
+// Deck creation lives solely in "srs deck create"; an unknown deck argument
+// never silently creates a directory.
 func newNewCmd() *cobra.Command {
 	var cloze bool
 	var decksRoot string
 
 	cmd := &cobra.Command{
 		Use:   "new <deck> <name>",
-		Short: "Create a new card and open it in your editor",
+		Short: "Create a new card in an existing deck and open it in your editor",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 2 {
 				return &UsageError{msg: fmt.Sprintf("accepts 2 arg(s), received %d", len(args))}
@@ -336,19 +342,24 @@ func newNewCmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			deckName := args[0]
-			cardName := args[1]
-
-			root := paths.DecksRoot(decksRoot)
-			deckDir := filepath.Join(root, deckName)
-			cardPath := filepath.Join(deckDir, cardName+".md")
-
-			if _, err := os.Stat(cardPath); err == nil {
-				return fmt.Errorf("new: %s already exists", cardPath)
+			deckSlug := slug.Slugify(args[0])
+			if deckSlug == "" {
+				return &UsageError{msg: fmt.Sprintf("new: %q has no usable characters for a deck name", args[0])}
+			}
+			cardSlug := slug.Slugify(args[1])
+			if cardSlug == "" {
+				return &UsageError{msg: fmt.Sprintf("new: %q has no usable characters for a card name", args[1])}
 			}
 
-			if err := os.MkdirAll(deckDir, 0o755); err != nil {
-				return fmt.Errorf("new: create deck dir: %w", err)
+			root := paths.DecksRoot(decksRoot)
+			deckDir, err := resolveExistingDeck(root, deckSlug)
+			if err != nil {
+				return err
+			}
+
+			cardPath := filepath.Join(deckDir, cardSlug+".md")
+			if _, err := os.Stat(cardPath); err == nil {
+				return fmt.Errorf("new: %s already exists", cardPath)
 			}
 
 			cardType := card.Basic
@@ -363,12 +374,101 @@ func newNewCmd() *cobra.Command {
 
 			return editorRun(cardPath)
 		},
+		SilenceUsage: true,
 	}
 
 	cmd.Flags().BoolVar(&cloze, "cloze", false, "create a cloze-deletion card")
 	cmd.Flags().StringVar(&decksRoot, "decks-root", "", "root directory for decks")
 
 	return cmd
+}
+
+// resolveExistingDeck returns the directory of the deck identified by deckSlug
+// under decksRoot. "srs new" never creates decks: when the deck directory does
+// not exist it returns a plain runtime error (exit code 1) whose message helps
+// the user recover — suggesting the closest existing deck, listing the decks
+// that do exist, or pointing at "srs deck create" when there are none.
+func resolveExistingDeck(decksRoot, deckSlug string) (string, error) {
+	deckDir := filepath.Join(decksRoot, deckSlug)
+	if info, err := os.Stat(deckDir); err == nil && info.IsDir() {
+		return deckDir, nil
+	}
+
+	names := existingDeckNames(decksRoot)
+	if len(names) == 0 {
+		return "", fmt.Errorf("new: deck %q does not exist; create it first with: srs deck create %s", deckSlug, deckSlug)
+	}
+	if suggestion, ok := closestDeck(deckSlug, names); ok {
+		return "", fmt.Errorf("new: deck %q does not exist. Did you mean %q?", deckSlug, suggestion)
+	}
+	return "", fmt.Errorf("new: deck %q does not exist. Existing decks: %s", deckSlug, strings.Join(names, ", "))
+}
+
+// existingDeckNames returns the directory names of every deck under decksRoot,
+// sorted alphabetically. A missing or unreadable root yields nil.
+func existingDeckNames(decksRoot string) []string {
+	deckPaths, err := deck.Discover(decksRoot)
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(deckPaths))
+	for _, p := range deckPaths {
+		names = append(names, filepath.Base(p))
+	}
+	sort.Strings(names)
+	return names
+}
+
+// closestDeck returns the deck name from names with the smallest Levenshtein
+// distance to target, together with true, when that distance is within a small
+// edit-distance threshold. Otherwise it returns "", false and the caller falls
+// back to listing every existing deck.
+func closestDeck(target string, names []string) (string, bool) {
+	best := ""
+	bestDist := -1
+	for _, n := range names {
+		d := levenshtein(target, n)
+		if bestDist < 0 || d < bestDist {
+			best, bestDist = n, d
+		}
+	}
+	if best == "" {
+		return "", false
+	}
+	// Roughly one edit per three characters, but always at least two so short
+	// typos and transpositions ("spnaish" -> "spanish") still match.
+	threshold := len(target) / 3
+	if threshold < 2 {
+		threshold = 2
+	}
+	if bestDist <= threshold {
+		return best, true
+	}
+	return "", false
+}
+
+// levenshtein computes the Levenshtein edit distance between a and b using a
+// rolling two-row dynamic-programming table. It is a hand-rolled helper so the
+// did-you-mean suggestion needs no third-party dependency.
+func levenshtein(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	prev := make([]int, len(rb)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ra); i++ {
+		curr := make([]int, len(rb)+1)
+		curr[0] = i
+		for j := 1; j <= len(rb); j++ {
+			cost := 1
+			if ra[i-1] == rb[j-1] {
+				cost = 0
+			}
+			curr[j] = min(prev[j]+1, curr[j-1]+1, prev[j-1]+cost)
+		}
+		prev = curr
+	}
+	return prev[len(rb)]
 }
 
 // newVersionCmd creates the "version" command.
