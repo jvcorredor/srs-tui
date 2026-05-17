@@ -275,7 +275,7 @@ func defaultPickerRun(decksRoot string) error {
 		), nil
 	}
 
-	m := tui.NewPickerModel(entries, onSelect)
+	m := tui.NewPickerModel(entries, onSelect, tui.WithDecksRoot(decksRoot))
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err = p.Run()
 	return err
